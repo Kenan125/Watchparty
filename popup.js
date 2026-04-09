@@ -1,13 +1,12 @@
-const DEFAULT_SERVER = "ws://localhost:8787";
+const RELAY_SERVER = "wss://watchparty-relay.onrender.com";
 
 const els = {
-  serverUrl: document.getElementById("serverUrl"),
   username: document.getElementById("username"),
+  randomNameBtn: document.getElementById("randomNameBtn"),
   room: document.getElementById("room"),
   roomPassword: document.getElementById("roomPassword"),
   inviteCode: document.getElementById("inviteCode"),
   copyInviteBtn: document.getElementById("copyInviteBtn"),
-  applyInviteBtn: document.getElementById("applyInviteBtn"),
   connectBtn: document.getElementById("connectBtn"),
   disconnectBtn: document.getElementById("disconnectBtn"),
   status: document.getElementById("status")
@@ -18,59 +17,47 @@ function setStatus(msg, cls) {
   els.status.className = `status${cls ? ` ${cls}` : ""}`;
 }
 
-function isValidWsUrl(value) {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "ws:" || parsed.protocol === "wss:";
-  } catch {
-    return false;
-  }
+function randomGuestName() {
+  const left = ["Sunny", "Swift", "Nova", "Quiet", "Pixel", "Cosmo", "Lunar", "Blaze"];
+  const right = ["Fox", "Wolf", "Otter", "Panda", "Koala", "Hawk", "Tiger", "Raven"];
+  const a = left[Math.floor(Math.random() * left.length)];
+  const b = right[Math.floor(Math.random() * right.length)];
+  const n = Math.floor(100 + Math.random() * 900);
+  return `${a}${b}${n}`;
 }
 
-function toInviteCode(serverUrl, room, roomPassword) {
+function randomRoomName() {
+  const partA = ["anime", "party", "otaku", "binge", "watch", "episode"];
+  const partB = ["night", "club", "crew", "zone", "room", "squad"];
+  const a = partA[Math.floor(Math.random() * partA.length)];
+  const b = partB[Math.floor(Math.random() * partB.length)];
+  const n = Math.floor(100 + Math.random() * 900);
+  return `${a}-${b}-${n}`;
+}
+
+function toInviteLink(room, hasPassword, episodeUrl) {
   const payload = {
-    v: 1,
-    serverUrl,
+    v: 3,
     room,
-    roomPassword: roomPassword || ""
+    hasPassword: Boolean(hasPassword)
   };
-  return `wp1:${btoa(JSON.stringify(payload))}`;
-}
 
-function parseInviteCode(code) {
-  if (!code || !code.startsWith("wp1:")) {
-    throw new Error("Invite code must start with wp1:");
+  const encoded = btoa(JSON.stringify(payload));
+  let base = "https://www.crunchyroll.com/";
+  if (episodeUrl) {
+    try {
+      const normalized = new URL(episodeUrl);
+      normalized.hash = "";
+      normalized.searchParams.delete("wp");
+      base = normalized.toString();
+    } catch {
+      base = "https://www.crunchyroll.com/";
+    }
   }
 
-  const encoded = code.slice(4);
-  const parsed = JSON.parse(atob(encoded));
-
-  if (!parsed || parsed.v !== 1) {
-    throw new Error("Unsupported invite code version");
-  }
-
-  if (!isValidWsUrl(parsed.serverUrl || "")) {
-    throw new Error("Invite code contains invalid server URL");
-  }
-
-  return {
-    serverUrl: (parsed.serverUrl || "").trim(),
-    room: (parsed.room || "").trim(),
-    roomPassword: (parsed.roomPassword || "").trim()
-  };
-}
-
-function refreshInviteCode() {
-  const serverUrl = (els.serverUrl.value || "").trim();
-  const room = (els.room.value || "").trim();
-  const roomPassword = (els.roomPassword.value || "").trim();
-
-  if (!serverUrl || !room || !isValidWsUrl(serverUrl)) {
-    els.inviteCode.value = "";
-    return;
-  }
-
-  els.inviteCode.value = toInviteCode(serverUrl, room, roomPassword);
+  const inviteUrl = new URL(base);
+  inviteUrl.searchParams.set("wp", encoded);
+  return inviteUrl.toString();
 }
 
 async function getActiveCrunchyrollTab() {
@@ -88,119 +75,127 @@ async function getActiveCrunchyrollTab() {
   return onCrunchyroll ? tab : null;
 }
 
+async function refreshInviteCode() {
+  const room = (els.room.value || "").trim();
+  const roomPassword = (els.roomPassword.value || "").trim();
+
+  if (!room) {
+    els.inviteCode.value = "";
+    return;
+  }
+
+  const tab = await getActiveCrunchyrollTab();
+  const episodeUrl = tab?.url || "https://www.crunchyroll.com/";
+  els.inviteCode.value = toInviteLink(room, Boolean(roomPassword), episodeUrl);
+}
+
 async function restoreSettings() {
   const data = await chrome.storage.local.get([
-    "wpServerUrl",
     "wpUsername",
     "wpRoom",
     "wpRoomPassword"
   ]);
 
-  els.serverUrl.value = data.wpServerUrl || DEFAULT_SERVER;
-  els.username.value = data.wpUsername || "";
+  els.username.value = data.wpUsername || randomGuestName();
   els.room.value = data.wpRoom || "";
   els.roomPassword.value = data.wpRoomPassword || "";
-  refreshInviteCode();
+  await refreshInviteCode();
 }
 
 async function sendToContent(message) {
   const tab = await getActiveCrunchyrollTab();
   if (!tab) {
     setStatus("Open a Crunchyroll episode tab first.", "warn");
-    return;
+    return false;
   }
 
   try {
     await chrome.tabs.sendMessage(tab.id, message);
-  } catch (err) {
+  } catch {
     setStatus("Could not reach page script. Refresh Crunchyroll tab.", "err");
-    return;
+    return false;
   }
 
-  if (message.type === "WP_CONNECT") {
-    setStatus(`Connected as ${message.payload.username} in room ${message.payload.room}.`, "ok");
-  } else if (message.type === "WP_DISCONNECT") {
-    setStatus("Disconnected.", "warn");
-  }
+  return true;
 }
 
-els.connectBtn.addEventListener("click", async () => {
-  const serverUrl = (els.serverUrl.value || "").trim();
-  const username = (els.username.value || "").trim();
-  const room = (els.room.value || "").trim();
+async function createRoomFromFields() {
+  const username = (els.username.value || "").trim() || randomGuestName();
+  const room = (els.room.value || "").trim() || randomRoomName();
   const roomPassword = (els.roomPassword.value || "").trim();
 
-  if (!serverUrl || !username || !room) {
-    setStatus("Server URL, username, and room are required.", "err");
-    return;
-  }
-
-  if (!isValidWsUrl(serverUrl)) {
-    setStatus("Server URL must start with ws:// or wss://", "err");
-    return;
-  }
-
-  if (
-    serverUrl.startsWith("ws://") &&
-    !serverUrl.includes("localhost") &&
-    !serverUrl.includes("127.0.0.1")
-  ) {
-    setStatus("Use wss:// for public servers (required on HTTPS pages).", "warn");
-    return;
-  }
+  els.username.value = username;
+  els.room.value = room;
 
   await chrome.storage.local.set({
-    wpServerUrl: serverUrl,
+    wpServerUrl: RELAY_SERVER,
     wpUsername: username,
     wpRoom: room,
     wpRoomPassword: roomPassword
   });
 
-  await sendToContent({
+  const sent = await sendToContent({
     type: "WP_CONNECT",
-    payload: { serverUrl, username, room, roomPassword }
+    payload: {
+      serverUrl: RELAY_SERVER,
+      username,
+      room,
+      roomPassword
+    }
   });
+
+  if (!sent) {
+    return;
+  }
+
+  await refreshInviteCode();
+  if (els.inviteCode.value) {
+    try {
+      await navigator.clipboard.writeText(els.inviteCode.value);
+      setStatus("Room created and connected. Invite link copied.", "ok");
+    } catch {
+      setStatus("Room created and connected. Copy invite link manually.", "ok");
+    }
+  } else {
+    setStatus("Room created and connected.", "ok");
+  }
+}
+
+els.connectBtn.addEventListener("click", async () => {
+  await createRoomFromFields();
 });
 
 els.disconnectBtn.addEventListener("click", async () => {
-  await sendToContent({ type: "WP_DISCONNECT" });
+  const done = await sendToContent({ type: "WP_DISCONNECT" });
+  if (done) {
+    setStatus("Disconnected.", "warn");
+  }
 });
 
 els.copyInviteBtn.addEventListener("click", async () => {
-  refreshInviteCode();
+  await refreshInviteCode();
   if (!els.inviteCode.value) {
-    setStatus("Fill valid server URL + room to generate invite code.", "warn");
+    setStatus("Create a room first to generate invite link.", "warn");
     return;
   }
 
   try {
     await navigator.clipboard.writeText(els.inviteCode.value);
-    setStatus("Invite code copied.", "ok");
+    setStatus("Invite link copied.", "ok");
   } catch {
-    setStatus("Clipboard blocked. Copy invite code manually.", "warn");
+    setStatus("Clipboard blocked. Copy invite link manually.", "warn");
   }
 });
 
-els.applyInviteBtn.addEventListener("click", () => {
-  const current = (els.inviteCode.value || "").trim();
-  if (!current) {
-    setStatus("Paste an invite code into the Invite Code field first.", "warn");
-    return;
-  }
-
-  try {
-    const parsed = parseInviteCode(current);
-    els.serverUrl.value = parsed.serverUrl;
-    els.room.value = parsed.room;
-    els.roomPassword.value = parsed.roomPassword;
-    setStatus("Invite code applied. Add your username and connect.", "ok");
-  } catch (err) {
-    setStatus(err.message || "Invalid invite code.", "err");
-  }
+els.randomNameBtn.addEventListener("click", () => {
+  els.username.value = randomGuestName();
+  setStatus("Random guest name generated.", "ok");
 });
 
-[els.serverUrl, els.room, els.roomPassword].forEach((input) => {
-  input.addEventListener("input", refreshInviteCode);
+[els.room, els.roomPassword].forEach((input) => {
+  input.addEventListener("input", () => {
+    refreshInviteCode().catch(() => {});
+  });
 });
 
 restoreSettings().catch(() => {

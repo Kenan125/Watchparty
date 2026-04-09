@@ -21,10 +21,48 @@ function ensureRoom(name) {
   if (!rooms.has(name)) {
     rooms.set(name, {
       members: new Set(),
-      password: ""
+      password: "",
+      usernames: new Set()
     });
   }
   return rooms.get(name);
+}
+
+function normalizeUsername(value) {
+  if (typeof value !== "string") {
+    return "anonymous";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "anonymous";
+  }
+
+  return trimmed.slice(0, 40);
+}
+
+function randomSuffix() {
+  return Math.floor(100 + Math.random() * 900);
+}
+
+function getUniqueUsername(roomEntry, requestedUsername) {
+  const base = normalizeUsername(requestedUsername);
+  if (!roomEntry.usernames.has(base)) {
+    return base;
+  }
+
+  for (let i = 0; i < 50; i += 1) {
+    const candidate = `${base}_${randomSuffix()}`;
+    if (!roomEntry.usernames.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  let suffix = 2;
+  while (roomEntry.usernames.has(`${base}_${suffix}`)) {
+    suffix += 1;
+  }
+  return `${base}_${suffix}`;
 }
 
 function sendError(socket, code, message) {
@@ -72,6 +110,9 @@ function cleanupSocket(socket) {
   }
 
   roomEntry.members.delete(socket);
+  if (username) {
+    roomEntry.usernames.delete(username);
+  }
 
   broadcast(room, {
     type: "leave",
@@ -146,9 +187,25 @@ wss.on("connection", (socket) => {
         return;
       }
 
+      const requestedUsername = normalizeUsername(data.username);
+      const assignedUsername = getUniqueUsername(roomEntry, requestedUsername);
+
       roomEntry.members.add(socket);
+      roomEntry.usernames.add(assignedUsername);
       socket.meta.room = room;
-      socket.meta.username = data.username || "anonymous";
+      socket.meta.username = assignedUsername;
+
+      if (assignedUsername !== requestedUsername && socket.readyState === 1) {
+        socket.send(
+          JSON.stringify({
+            type: "system",
+            event: "username-updated",
+            username: assignedUsername,
+            requestedUsername,
+            timestamp: Date.now()
+          })
+        );
+      }
     }
 
     if (socket.meta.room !== room) {
@@ -167,7 +224,12 @@ wss.on("connection", (socket) => {
       return;
     }
 
-    broadcast(room, data, socket);
+    const outbound = {
+      ...data,
+      username: socket.meta.username
+    };
+
+    broadcast(room, outbound, socket);
   });
 
   socket.on("close", () => {

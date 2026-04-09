@@ -86,9 +86,15 @@ input:focus {
   gap: 8px;
 }
 
+.username-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+}
+
 .invite-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   gap: 6px;
 }
 

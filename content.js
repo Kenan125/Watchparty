@@ -1,4 +1,6 @@
 (() => {
+  const RELAY_SERVER = "wss://watchparty-relay.onrender.com";
+
   const state = {
     ws: null,
     room: null,
@@ -31,6 +33,8 @@
       disconnect(true);
     }
   });
+
+  autoConnectFromInviteLink().catch(() => {});
 
   function buildUi() {
     if (document.getElementById("wp-root")) {
@@ -82,13 +86,16 @@
         return;
       }
 
+      const now = Date.now();
+      addChat(state.username, text, now);
+
       sendMessage({
         type: "chat",
         room: state.room,
         username: state.username,
         pageKey: state.pageKey,
         text,
-        timestamp: Date.now()
+        timestamp: now
       });
 
       input.value = "";
@@ -249,6 +256,19 @@
     }
 
     if (!data || data.username === state.username && data.type !== "system") {
+      return;
+    }
+
+    if (data.type === "system" && data.event === "username-updated") {
+      const previous = state.username;
+      state.username = data.username;
+      setConnectionStatus(`Online - ${state.username}@${state.room}`);
+      addLog(
+        `Name ${previous} is already used. You are now ${state.username}.`,
+        "system",
+        data.timestamp
+      );
+      chrome.storage.local.set({ wpUsername: state.username }).catch(() => {});
       return;
     }
 
@@ -560,6 +580,106 @@
       "system",
       data.timestamp
     );
+  }
+
+  async function autoConnectFromInviteLink() {
+    const invite = parseInviteFromUrl();
+    if (!invite) {
+      return;
+    }
+
+    stripInviteParamFromUrl();
+
+    const saved = await chrome.storage.local.get(["wpUsername", "wpRoom", "wpRoomPassword"]);
+    const username = (saved.wpUsername || "").trim() || randomGuestName();
+
+    let roomPassword = "";
+    if (invite.hasPassword) {
+      if (saved.wpRoom === invite.room && saved.wpRoomPassword) {
+        roomPassword = String(saved.wpRoomPassword).trim();
+      }
+
+      if (!roomPassword) {
+        roomPassword = window.prompt("This room is password protected. Enter password:", "") || "";
+      }
+
+      roomPassword = roomPassword.trim();
+      if (!roomPassword) {
+        addLog("Invite requires a password. Connect canceled.", "system");
+        return;
+      }
+    }
+
+    await chrome.storage.local.set({
+      wpServerUrl: invite.serverUrl,
+      wpRoom: invite.room,
+      wpRoomPassword: roomPassword
+    });
+
+    addLog(`Invite loaded for room ${invite.room}. Connecting as ${username}...`, "system");
+
+    connect({
+      serverUrl: invite.serverUrl,
+      username,
+      room: invite.room,
+      roomPassword
+    });
+  }
+
+  function parseInviteFromUrl() {
+    let wp;
+    try {
+      wp = new URL(location.href).searchParams.get("wp");
+    } catch {
+      return null;
+    }
+
+    if (!wp) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(atob(decodeURIComponent(wp)));
+      if (!parsed || (parsed.v !== 2 && parsed.v !== 3)) {
+        return null;
+      }
+
+      if (!parsed.room) {
+        return null;
+      }
+
+      return {
+        serverUrl: String(parsed.serverUrl || RELAY_SERVER).trim(),
+        room: String(parsed.room).trim(),
+        hasPassword: Boolean(parsed.hasPassword)
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function stripInviteParamFromUrl() {
+    try {
+      const next = new URL(location.href);
+      if (!next.searchParams.has("wp")) {
+        return;
+      }
+
+      next.searchParams.delete("wp");
+      const updated = `${next.pathname}${next.search}${next.hash}`;
+      history.replaceState(null, "", updated);
+    } catch {
+      return;
+    }
+  }
+
+  function randomGuestName() {
+    const left = ["Sunny", "Swift", "Nova", "Quiet", "Pixel", "Cosmo", "Lunar", "Blaze"];
+    const right = ["Fox", "Wolf", "Otter", "Panda", "Koala", "Hawk", "Tiger", "Raven"];
+    const a = left[Math.floor(Math.random() * left.length)];
+    const b = right[Math.floor(Math.random() * right.length)];
+    const n = Math.floor(100 + Math.random() * 900);
+    return `${a}${b}${n}`;
   }
 
   window.addEventListener("beforeunload", () => {

@@ -14,11 +14,11 @@
     </div>
     <p class="subtitle">Sync playback, chat, and activity logs.</p>
 
-    <label for="serverUrl">Relay Server URL</label>
-    <input id="serverUrl" type="text" placeholder="ws://localhost:8787" />
-
-    <label for="username">Username</label>
-    <input id="username" type="text" placeholder="Your name" maxlength="24" />
+    <label for="username">Username (optional)</label>
+    <div class="username-row">
+      <input id="username" type="text" placeholder="Auto guest name" maxlength="24" />
+      <button id="randomNameBtn" type="button" class="secondary slim">Random</button>
+    </div>
 
     <label for="room">Party Room</label>
     <input id="room" type="text" placeholder="anime-night" maxlength="40" />
@@ -26,15 +26,14 @@
     <label for="roomPassword">Room Password (optional)</label>
     <input id="roomPassword" type="password" placeholder="set a shared password" maxlength="64" />
 
-    <label for="inviteCode">Invite Code</label>
+    <label for="inviteCode">Invite Link (paste in browser tab)</label>
     <div class="invite-row">
-      <input id="inviteCode" type="text" placeholder="wp1:..." />
+      <input id="inviteCode" type="text" placeholder="https://watchparty.party/join?wp=..." />
       <button id="copyInviteBtn" type="button" class="secondary slim">Copy</button>
-      <button id="applyInviteBtn" type="button" class="secondary slim">Apply</button>
     </div>
 
     <div class="buttons">
-      <button id="connectBtn" class="primary">Connect</button>
+      <button id="connectBtn" class="primary">Create Room</button>
       <button id="disconnectBtn" class="secondary">Disconnect</button>
     </div>
 
