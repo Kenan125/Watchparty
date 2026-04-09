@@ -1,0 +1,135 @@
+:root {
+  --bg-1: #0f1d2d;
+  --bg-2: #162a3e;
+  --panel: #1d3550;
+  --text: #f2f7ff;
+  --muted: #c0d0e7;
+  --accent: #ff7a18;
+  --accent-2: #ffb347;
+  --danger: #d7263d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  width: 340px;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 20% 15%, #244e72 0%, transparent 40%),
+    radial-gradient(circle at 80% 85%, #4f2a5b 0%, transparent 35%),
+    linear-gradient(140deg, var(--bg-1), var(--bg-2));
+}
+
+.panel {
+  padding: 14px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #152336;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.subtitle {
+  margin: 6px 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  margin: 8px 0 4px;
+}
+
+input {
+  width: 100%;
+  border: 1px solid #43658d;
+  border-radius: 8px;
+  background: #102235;
+  color: var(--text);
+  padding: 9px 10px;
+  outline: none;
+}
+
+input:focus {
+  border-color: var(--accent-2);
+}
+
+.buttons {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.invite-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+}
+
+.slim {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+button {
+  border: 0;
+  border-radius: 9px;
+  padding: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #1d2333;
+}
+
+.secondary {
+  background: #2a3f59;
+  color: var(--text);
+}
+
+.status {
+  margin-top: 10px;
+  min-height: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.status.ok {
+  color: #91ff9f;
+}
+
+.status.warn {
+  color: #ffd28d;
+}
+
+.status.err {
+  color: #ff8a8a;
+}

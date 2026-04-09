@@ -1,0 +1,17 @@
+{
+  "name": "watchparty-relay",
+  "version": "1.0.0",
+  "description": "WebSocket relay for Crunchyroll watch party extension",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.1"
+  }
+}

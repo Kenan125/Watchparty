@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: watchparty-relay
+    runtime: node
+    rootDir: relay-server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20

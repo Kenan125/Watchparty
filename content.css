@@ -1,0 +1,105 @@
+#wp-root {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 320px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  z-index: 2147483647;
+  color: #e9f4ff;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  border: 1px solid #33557a;
+  border-radius: 14px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  background:
+    linear-gradient(150deg, rgba(14, 26, 40, 0.92), rgba(22, 38, 58, 0.92));
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.45);
+}
+
+#wp-header {
+  padding: 8px 10px;
+  font-weight: 700;
+  background: linear-gradient(90deg, #f07f13, #f2ac3f);
+  color: #1f2b3d;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#wp-connection {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+#wp-log,
+#wp-chat {
+  padding: 8px;
+  overflow-y: auto;
+}
+
+#wp-log {
+  min-height: 120px;
+  max-height: 190px;
+  border-bottom: 1px solid #2b4462;
+}
+
+#wp-chat {
+  min-height: 130px;
+  max-height: 220px;
+}
+
+.wp-line {
+  margin: 5px 0;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.wp-time {
+  color: #9bb9da;
+}
+
+.wp-system {
+  color: #ffd9a6;
+}
+
+.wp-user {
+  color: #9fd2ff;
+}
+
+#wp-chat-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid #2b4462;
+}
+
+#wp-chat-input {
+  border: 1px solid #355476;
+  border-radius: 8px;
+  background: #132639;
+  color: #eaf6ff;
+  padding: 8px;
+}
+
+#wp-chat-send {
+  border: 0;
+  border-radius: 8px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #f07f13, #f2ac3f);
+  color: #1f2b3d;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  #wp-root {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+    max-height: 58vh;
+  }
+}
