@@ -17,3 +17,5 @@ build/
 *.log
 
 relay-server/node_modules/
+
+watchparty-*.zip
