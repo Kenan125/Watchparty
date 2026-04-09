@@ -94,6 +94,21 @@ function broadcast(room, payload, exceptSocket) {
   }
 }
 
+function broadcastMemberCount(room) {
+  const roomEntry = rooms.get(room);
+  if (!roomEntry) {
+    return;
+  }
+
+  broadcast(room, {
+    type: "system",
+    event: "member-count",
+    room,
+    count: roomEntry.members.size,
+    timestamp: Date.now()
+  });
+}
+
 function cleanupSocket(socket) {
   const { room, username } = socket.meta || {};
   if (!room) {
@@ -113,6 +128,8 @@ function cleanupSocket(socket) {
   if (username) {
     roomEntry.usernames.delete(username);
   }
+
+  broadcastMemberCount(room);
 
   broadcast(room, {
     type: "leave",
@@ -194,6 +211,8 @@ wss.on("connection", (socket) => {
       roomEntry.usernames.add(assignedUsername);
       socket.meta.room = room;
       socket.meta.username = assignedUsername;
+
+      broadcastMemberCount(room);
 
       if (assignedUsername !== requestedUsername && socket.readyState === 1) {
         socket.send(

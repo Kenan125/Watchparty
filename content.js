@@ -10,15 +10,24 @@
     pageKey: normalizePageKey(location.href),
     connected: false,
     authFailed: false,
+    activeTab: "chat",
     suppressPlayerEvents: false,
     lastSeekBroadcastAt: 0,
+    pendingSeekTimer: null,
+    playbackVerifyTimer: null,
+    forcePlayTimer: null,
+    pendingAutoResume: false,
+    pendingTargetTime: null,
+    unlockNoticeShown: false,
     reconnectTimer: null,
     player: null,
     playerPoller: null,
-    mismatchNotices: new Set()
+    mismatchNotices: new Set(),
+    memberUsernames: new Set()
   };
 
   const ui = buildUi();
+  setupAutoResumeUnlock();
 
   chrome.runtime.onMessage.addListener((message) => {
     if (!message || !message.type) {
@@ -37,51 +46,119 @@
   autoConnectFromInviteLink().catch(() => {});
 
   function buildUi() {
-    if (document.getElementById("wp-root")) {
+    const existingRoot = document.getElementById("wp-root");
+    const existingLauncher = document.getElementById("wp-launcher");
+    if (existingRoot && existingLauncher) {
       return {
-        root: document.getElementById("wp-root"),
+        launcher: existingLauncher,
+        root: existingRoot,
         connection: document.getElementById("wp-connection"),
+        userCount: document.getElementById("wp-user-count"),
+        roomText: document.getElementById("wp-settings-room"),
+        chatTabBtn: document.getElementById("wp-tab-btn-chat"),
+        settingsTabBtn: document.getElementById("wp-tab-btn-settings"),
+        settingsQuickBtn: document.getElementById("wp-settings-quick"),
+        chatTab: document.getElementById("wp-tab-chat"),
+        settingsTab: document.getElementById("wp-tab-settings"),
         log: document.getElementById("wp-log"),
         chat: document.getElementById("wp-chat"),
         form: document.getElementById("wp-chat-form"),
-        input: document.getElementById("wp-chat-input")
+        input: document.getElementById("wp-chat-input"),
+        settingsName: document.getElementById("wp-settings-name"),
+        saveNameBtn: document.getElementById("wp-settings-save-name"),
+        copyInviteBtn: document.getElementById("wp-settings-copy-link")
       };
     }
+
+    const launcher = document.createElement("button");
+    launcher.id = "wp-launcher";
+    launcher.type = "button";
+    launcher.textContent = "WP";
 
     const root = document.createElement("section");
     root.id = "wp-root";
 
-    const header = document.createElement("div");
-    header.id = "wp-header";
-    header.innerHTML = `<span>WatchParty</span><span id="wp-connection">Offline</span>`;
+    root.innerHTML = `
+      <div id="wp-header">
+        <div>
+          <div>WatchParty</div>
+          <div id="wp-connection">Offline</div>
+        </div>
+        <div id="wp-header-right">
+          <span id="wp-user-count">Users: 0</span>
+          <button id="wp-settings-quick" class="wp-header-btn" type="button">Settings</button>
+        </div>
+      </div>
+      <div id="wp-tabs">
+        <button id="wp-tab-btn-chat" class="wp-tab-btn wp-active" type="button">Chat</button>
+        <button id="wp-tab-btn-settings" class="wp-tab-btn" type="button">Settings</button>
+      </div>
+      <section id="wp-tab-chat" class="wp-tab wp-active">
+        <div id="wp-log"></div>
+        <div id="wp-chat"></div>
+        <form id="wp-chat-form">
+          <input id="wp-chat-input" type="text" maxlength="500" placeholder="Type a message..." />
+          <button id="wp-chat-send" type="submit">Send</button>
+        </form>
+      </section>
+      <section id="wp-tab-settings" class="wp-tab">
+        <div class="wp-setting-row">
+          <div class="wp-setting-label">Room</div>
+          <div id="wp-settings-room">Not connected</div>
+        </div>
+        <div class="wp-setting-row">
+          <label class="wp-setting-label" for="wp-settings-name">Display name</label>
+          <input id="wp-settings-name" type="text" maxlength="24" placeholder="Your name" />
+        </div>
+        <div class="wp-setting-actions">
+          <button id="wp-settings-save-name" type="button" class="wp-action-btn">Save Name</button>
+          <button id="wp-settings-copy-link" type="button" class="wp-muted-btn">Copy Invite</button>
+        </div>
+      </section>
+    `;
 
-    const log = document.createElement("div");
-    log.id = "wp-log";
+    document.body.append(launcher, root);
 
-    const chat = document.createElement("div");
-    chat.id = "wp-chat";
+    const refs = {
+      launcher,
+      root,
+      connection: root.querySelector("#wp-connection"),
+      userCount: root.querySelector("#wp-user-count"),
+      roomText: root.querySelector("#wp-settings-room"),
+      chatTabBtn: root.querySelector("#wp-tab-btn-chat"),
+      settingsTabBtn: root.querySelector("#wp-tab-btn-settings"),
+      settingsQuickBtn: root.querySelector("#wp-settings-quick"),
+      chatTab: root.querySelector("#wp-tab-chat"),
+      settingsTab: root.querySelector("#wp-tab-settings"),
+      log: root.querySelector("#wp-log"),
+      chat: root.querySelector("#wp-chat"),
+      form: root.querySelector("#wp-chat-form"),
+      input: root.querySelector("#wp-chat-input"),
+      settingsName: root.querySelector("#wp-settings-name"),
+      saveNameBtn: root.querySelector("#wp-settings-save-name"),
+      copyInviteBtn: root.querySelector("#wp-settings-copy-link")
+    };
 
-    const form = document.createElement("form");
-    form.id = "wp-chat-form";
+    refs.launcher.addEventListener("click", () => {
+      refs.root.classList.toggle("wp-open");
+    });
 
-    const input = document.createElement("input");
-    input.id = "wp-chat-input";
-    input.type = "text";
-    input.maxLength = 500;
-    input.placeholder = "Type a message...";
+    refs.chatTabBtn.addEventListener("click", () => {
+      switchTab("chat");
+    });
 
-    const send = document.createElement("button");
-    send.id = "wp-chat-send";
-    send.type = "submit";
-    send.textContent = "Send";
+    refs.settingsTabBtn.addEventListener("click", () => {
+      switchTab("settings");
+    });
 
-    form.append(input, send);
-    root.append(header, log, chat, form);
-    document.body.appendChild(root);
+    refs.settingsQuickBtn.addEventListener("click", () => {
+      switchTab("settings");
+      refs.root.classList.add("wp-open");
+    });
 
-    form.addEventListener("submit", (event) => {
+    refs.form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const text = input.value.trim();
+      const text = refs.input.value.trim();
       if (!text || !state.connected) {
         return;
       }
@@ -98,17 +175,32 @@
         timestamp: now
       });
 
-      input.value = "";
+      refs.input.value = "";
     });
 
-    return {
-      root,
-      connection: header.querySelector("#wp-connection"),
-      log,
-      chat,
-      form,
-      input
-    };
+    refs.saveNameBtn.addEventListener("click", () => {
+      saveDisplayName().catch(() => {
+        addLog("Could not update name.", "system");
+      });
+    });
+
+    refs.copyInviteBtn.addEventListener("click", () => {
+      copyInviteLink().catch(() => {
+        addLog("Could not copy invite link.", "system");
+      });
+    });
+
+    return refs;
+  }
+
+  function switchTab(tabName) {
+    state.activeTab = tabName;
+    const isChat = tabName === "chat";
+
+    ui.chatTabBtn.classList.toggle("wp-active", isChat);
+    ui.settingsTabBtn.classList.toggle("wp-active", !isChat);
+    ui.chatTab.classList.toggle("wp-active", isChat);
+    ui.settingsTab.classList.toggle("wp-active", !isChat);
   }
 
   function connect(payload) {
@@ -125,6 +217,11 @@
     state.room = room;
     state.roomPassword = roomPassword || "";
     state.authFailed = false;
+    state.memberUsernames.clear();
+    state.memberUsernames.add(state.username);
+    updateUserCount(state.memberUsernames.size);
+    ui.settingsName.value = state.username;
+    ui.roomText.textContent = state.room;
 
     setConnectionStatus("Connecting...");
 
@@ -139,6 +236,7 @@
     state.ws.addEventListener("open", () => {
       state.connected = true;
       setConnectionStatus(`Online - ${state.username}@${state.room}`);
+      ui.root.classList.add("wp-open");
 
       addLog(`${state.username} joined room ${state.room}.`, "system");
 
@@ -159,6 +257,8 @@
       const hadRoom = Boolean(state.room);
       state.connected = false;
       setConnectionStatus("Offline");
+      state.memberUsernames.clear();
+      updateUserCount(0);
 
       if (hadRoom) {
         addLog("Disconnected from relay server.", "system");
@@ -180,6 +280,9 @@
 
   function scheduleReconnect() {
     clearTimeout(state.reconnectTimer);
+    clearTimeout(state.pendingSeekTimer);
+    clearTimeout(state.playbackVerifyTimer);
+    clearTimeout(state.forcePlayTimer);
     clearInterval(state.playerPoller);
     state.playerPoller = null;
     state.reconnectTimer = setTimeout(() => {
@@ -196,6 +299,12 @@
 
   function disconnect(manual) {
     clearTimeout(state.reconnectTimer);
+    clearTimeout(state.pendingSeekTimer);
+    clearTimeout(state.playbackVerifyTimer);
+    clearTimeout(state.forcePlayTimer);
+    state.pendingAutoResume = false;
+    state.pendingTargetTime = null;
+    state.unlockNoticeShown = false;
 
     if (state.connected) {
       sendMessage({
@@ -214,6 +323,8 @@
 
     state.connected = false;
     setConnectionStatus("Offline");
+    state.memberUsernames.clear();
+    updateUserCount(0);
 
     if (manual) {
       addLog("Disconnected from party.", "system");
@@ -222,6 +333,7 @@
       state.roomPassword = "";
       state.serverUrl = null;
       state.authFailed = false;
+      ui.roomText.textContent = "Not connected";
     }
   }
 
@@ -255,20 +367,33 @@
       return;
     }
 
-    if (!data || data.username === state.username && data.type !== "system") {
+    if (!data) {
       return;
     }
 
     if (data.type === "system" && data.event === "username-updated") {
       const previous = state.username;
       state.username = data.username;
+      state.memberUsernames.delete(previous);
+      state.memberUsernames.add(state.username);
+      updateUserCount(state.memberUsernames.size);
       setConnectionStatus(`Online - ${state.username}@${state.room}`);
+      ui.settingsName.value = state.username;
       addLog(
         `Name ${previous} is already used. You are now ${state.username}.`,
         "system",
         data.timestamp
       );
       chrome.storage.local.set({ wpUsername: state.username }).catch(() => {});
+      return;
+    }
+
+    if (data.type === "system" && data.event === "member-count") {
+      updateUserCount(Number(data.count));
+      return;
+    }
+
+    if (data.username === state.username && data.type !== "system") {
       return;
     }
 
@@ -290,11 +415,13 @@
     }
 
     if (data.type === "join") {
+      addMember(data.username);
       addLog(`${data.username} joined.`, "system", data.timestamp);
       return;
     }
 
     if (data.type === "leave") {
+      removeMember(data.username);
       addLog(`${data.username} left.`, "system", data.timestamp);
       return;
     }
@@ -353,6 +480,10 @@
         return;
       }
 
+      // Local user interaction should cancel any pending remote force-play logic.
+      clearTimeout(state.forcePlayTimer);
+      clearTimeout(state.playbackVerifyTimer);
+
       addLog(`${state.username} paused at ${formatVideoTime(player.currentTime)}.`, "system");
       sendMessage({
         type: "control",
@@ -369,6 +500,10 @@
       if (state.suppressPlayerEvents || !state.connected) {
         return;
       }
+
+      // Local user interaction should cancel any pending remote force-play logic.
+      clearTimeout(state.forcePlayTimer);
+      clearTimeout(state.playbackVerifyTimer);
 
       addLog(`${state.username} resumed at ${formatVideoTime(player.currentTime)}.`, "system");
       sendMessage({
@@ -387,22 +522,31 @@
         return;
       }
 
-      const now = Date.now();
-      if (now - state.lastSeekBroadcastAt < 500) {
-        return;
-      }
-      state.lastSeekBroadcastAt = now;
+      // User scrubbed timeline manually; stop stale remote timers from snapping back.
+      clearTimeout(state.forcePlayTimer);
+      clearTimeout(state.playbackVerifyTimer);
 
-      addLog(`${state.username} jumped to ${formatVideoTime(player.currentTime)}.`, "system");
-      sendMessage({
-        type: "control",
-        action: "seek",
-        room: state.room,
-        username: state.username,
-        pageKey: state.pageKey,
-        time: player.currentTime,
-        timestamp: now
-      });
+      clearTimeout(state.pendingSeekTimer);
+      state.pendingSeekTimer = setTimeout(() => {
+        if (state.suppressPlayerEvents || !state.connected) {
+          return;
+        }
+
+        const now = Date.now();
+        state.lastSeekBroadcastAt = now;
+
+        addLog(`${state.username} jumped to ${formatVideoTime(player.currentTime)}.`, "system");
+        sendMessage({
+          type: "control",
+          action: "seek",
+          room: state.room,
+          username: state.username,
+          pageKey: state.pageKey,
+          paused: player.paused,
+          time: player.currentTime,
+          timestamp: now
+        });
+      }, 140);
     });
   }
 
@@ -414,6 +558,10 @@
 
     const remoteTime = Number(data.time);
     const action = data.action;
+
+    // Replace any older remote enforcement with the current inbound command.
+    clearTimeout(state.forcePlayTimer);
+    clearTimeout(state.playbackVerifyTimer);
 
     state.suppressPlayerEvents = true;
 
@@ -427,11 +575,18 @@
     }
 
     if (action === "play") {
-      player.play().catch(() => {});
+      forceResumePlayback(player, remoteTime);
+      schedulePlaybackVerification(player, remoteTime, true);
       addLog(`${data.username} resumed at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
     }
 
     if (action === "seek") {
+      if (data.paused === false) {
+        forceResumePlayback(player, remoteTime);
+        schedulePlaybackVerification(player, remoteTime, true);
+      } else if (data.paused === true) {
+        player.pause();
+      }
       addLog(`${data.username} jumped to ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
     }
 
@@ -488,7 +643,7 @@
     if (data.paused) {
       player.pause();
     } else {
-      player.play().catch(() => {});
+      forceResumePlayback(player, remoteTime);
     }
 
     setTimeout(() => {
@@ -508,6 +663,27 @@
 
   function setConnectionStatus(text) {
     ui.connection.textContent = text;
+  }
+
+  function updateUserCount(count) {
+    const safe = Number.isFinite(count) ? Math.max(0, count) : state.memberUsernames.size;
+    ui.userCount.textContent = `Users: ${safe}`;
+  }
+
+  function addMember(username) {
+    if (!username) {
+      return;
+    }
+    state.memberUsernames.add(username);
+    updateUserCount(state.memberUsernames.size);
+  }
+
+  function removeMember(username) {
+    if (!username) {
+      return;
+    }
+    state.memberUsernames.delete(username);
+    updateUserCount(state.memberUsernames.size);
   }
 
   function addLog(text, kind, timestamp) {
@@ -556,10 +732,20 @@
   function normalizePageKey(url) {
     try {
       const parsed = new URL(url);
-      return `${parsed.origin}${parsed.pathname}`;
+      return sanitizePathKey(parsed.pathname);
     } catch {
-      return location.pathname;
+      return sanitizePathKey(location.pathname);
     }
+  }
+
+  function sanitizePathKey(pathname) {
+    const clean = String(pathname || "").trim();
+    if (!clean) {
+      return "/";
+    }
+
+    const noTrailing = clean.endsWith("/") && clean.length > 1 ? clean.slice(0, -1) : clean;
+    return noTrailing.toLowerCase();
   }
 
   function isSamePage(remotePageKey) {
@@ -592,6 +778,7 @@
 
     const saved = await chrome.storage.local.get(["wpUsername", "wpRoom", "wpRoomPassword"]);
     const username = (saved.wpUsername || "").trim() || randomGuestName();
+    ui.settingsName.value = username;
 
     let roomPassword = "";
     if (invite.hasPassword) {
@@ -624,6 +811,55 @@
       room: invite.room,
       roomPassword
     });
+  }
+
+  async function saveDisplayName() {
+    const desired = (ui.settingsName.value || "").trim() || randomGuestName();
+    ui.settingsName.value = desired;
+
+    await chrome.storage.local.set({ wpUsername: desired });
+
+    if (!state.connected || !state.room) {
+      state.username = desired;
+      addLog(`Name saved as ${desired}.`, "system");
+      return;
+    }
+
+    if (desired === state.username) {
+      addLog(`Name is already ${desired}.`, "system");
+      return;
+    }
+
+    addLog(`Changing name to ${desired}...`, "system");
+
+    connect({
+      serverUrl: state.serverUrl || RELAY_SERVER,
+      username: desired,
+      room: state.room,
+      roomPassword: state.roomPassword
+    });
+  }
+
+  async function copyInviteLink() {
+    if (!state.room) {
+      addLog("Connect to a room first to copy invite link.", "system");
+      return;
+    }
+
+    const payload = {
+      v: 3,
+      room: state.room,
+      hasPassword: Boolean(state.roomPassword)
+    };
+
+    const next = new URL(location.href);
+    next.hash = "";
+    next.searchParams.delete("wp");
+    next.searchParams.set("wp", btoa(JSON.stringify(payload)));
+    const inviteLink = next.toString();
+
+    await navigator.clipboard.writeText(inviteLink);
+    addLog("Invite link copied.", "system");
   }
 
   function parseInviteFromUrl() {
@@ -680,6 +916,135 @@
     const b = right[Math.floor(Math.random() * right.length)];
     const n = Math.floor(100 + Math.random() * 900);
     return `${a}${b}${n}`;
+  }
+
+  async function ensurePlaybackStarted(player) {
+    if (!player) {
+      return;
+    }
+
+    try {
+      await player.play();
+      return;
+    } catch {
+      // Fallback for autoplay policies: muted autoplay is often allowed.
+    }
+
+    const previousMuted = player.muted;
+    player.muted = true;
+
+    try {
+      await player.play();
+      setTimeout(() => {
+        player.muted = previousMuted;
+      }, 250);
+    } catch {
+      player.muted = previousMuted;
+      addLog("Remote play was blocked by browser autoplay policy. Click video once.", "system");
+    }
+  }
+
+  function forceResumePlayback(player, targetTime) {
+    clearTimeout(state.forcePlayTimer);
+
+    let attempt = 0;
+    const maxAttempts = 20;
+
+    const tick = () => {
+      if (!player) {
+        return;
+      }
+
+      if (Number.isFinite(targetTime) && Math.abs(player.currentTime - targetTime) > 1.8) {
+        player.currentTime = targetTime;
+      }
+
+      if (!player.paused) {
+        state.pendingAutoResume = false;
+        state.pendingTargetTime = null;
+        state.unlockNoticeShown = false;
+        return;
+      }
+
+      ensurePlaybackStarted(player).catch(() => {});
+      attempt += 1;
+
+      if (attempt < maxAttempts && player.paused) {
+        state.forcePlayTimer = setTimeout(tick, 300);
+      } else if (player.paused) {
+        state.pendingAutoResume = true;
+        state.pendingTargetTime = Number.isFinite(targetTime) ? targetTime : null;
+        if (!state.unlockNoticeShown) {
+          addLog("Remote play is blocked by browser policy. Click anywhere once to enable sync playback.", "system");
+          state.unlockNoticeShown = true;
+        }
+      }
+    };
+
+    tick();
+  }
+
+  function setupAutoResumeUnlock() {
+    const tryUnlock = () => {
+      if (!state.pendingAutoResume) {
+        return;
+      }
+
+      const player = getPlayer();
+      if (!player) {
+        return;
+      }
+
+      const target = state.pendingTargetTime;
+      if (Number.isFinite(target) && Math.abs(player.currentTime - target) > 1.5) {
+        player.currentTime = target;
+      }
+
+      ensurePlaybackStarted(player)
+        .then(() => {
+          state.pendingAutoResume = false;
+          state.pendingTargetTime = null;
+          if (state.unlockNoticeShown) {
+            addLog("Sync playback enabled on this tab.", "system");
+          }
+          state.unlockNoticeShown = false;
+        })
+        .catch(() => {
+          return;
+        });
+    };
+
+    window.addEventListener("pointerdown", tryUnlock, true);
+    window.addEventListener("keydown", tryUnlock, true);
+  }
+
+  function schedulePlaybackVerification(player, targetTime, shouldPlay) {
+    clearTimeout(state.playbackVerifyTimer);
+
+    const maxAttempts = 3;
+    let attempt = 0;
+
+    const run = () => {
+      if (!player || state.suppressPlayerEvents) {
+        return;
+      }
+
+      const drift = Number.isFinite(targetTime) ? Math.abs(player.currentTime - targetTime) : 0;
+      if (Number.isFinite(targetTime) && drift > 1.6) {
+        player.currentTime = targetTime;
+      }
+
+      if (shouldPlay && player.paused) {
+        ensurePlaybackStarted(player).catch(() => {});
+      }
+
+      attempt += 1;
+      if (attempt < maxAttempts && shouldPlay && player.paused) {
+        state.playbackVerifyTimer = setTimeout(run, 250);
+      }
+    };
+
+    state.playbackVerifyTimer = setTimeout(run, 120);
   }
 
   window.addEventListener("beforeunload", () => {
