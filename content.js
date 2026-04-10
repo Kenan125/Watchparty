@@ -5,12 +5,14 @@
     ws: null,
     room: null,
     username: null,
+    clientId: `cid-${Math.random().toString(36).slice(2, 10)}`,
     roomPassword: "",
     serverUrl: null,
     pageKey: normalizePageKey(location.href),
     connected: false,
     authFailed: false,
     activeTab: "chat",
+    playbackIntentPlaying: false,
     suppressPlayerEvents: false,
     lastSeekBroadcastAt: 0,
     pendingSeekTimer: null,
@@ -217,6 +219,7 @@
     state.room = room;
     state.roomPassword = roomPassword || "";
     state.authFailed = false;
+    state.playbackIntentPlaying = false;
     state.memberUsernames.clear();
     state.memberUsernames.add(state.username);
     updateUserCount(state.memberUsernames.size);
@@ -323,6 +326,7 @@
 
     state.connected = false;
     setConnectionStatus("Offline");
+    state.playbackIntentPlaying = false;
     state.memberUsernames.clear();
     updateUserCount(0);
 
@@ -354,6 +358,9 @@
     }
     if (!("roomPassword" in outbound)) {
       outbound.roomPassword = state.roomPassword || "";
+    }
+    if (!("senderId" in outbound)) {
+      outbound.senderId = state.clientId;
     }
 
     state.ws.send(JSON.stringify(outbound));
@@ -393,7 +400,11 @@
       return;
     }
 
-    if (data.username === state.username && data.type !== "system") {
+    if (data.senderId && data.senderId === state.clientId && data.type !== "system") {
+      return;
+    }
+
+    if (!data.senderId && data.username === state.username && data.type !== "system") {
       return;
     }
 
@@ -483,6 +494,7 @@
       // Local user interaction should cancel any pending remote force-play logic.
       clearTimeout(state.forcePlayTimer);
       clearTimeout(state.playbackVerifyTimer);
+      state.playbackIntentPlaying = false;
 
       addLog(`${state.username} paused at ${formatVideoTime(player.currentTime)}.`, "system");
       sendMessage({
@@ -504,6 +516,7 @@
       // Local user interaction should cancel any pending remote force-play logic.
       clearTimeout(state.forcePlayTimer);
       clearTimeout(state.playbackVerifyTimer);
+      state.playbackIntentPlaying = true;
 
       addLog(`${state.username} resumed at ${formatVideoTime(player.currentTime)}.`, "system");
       sendMessage({
@@ -542,6 +555,7 @@
           room: state.room,
           username: state.username,
           pageKey: state.pageKey,
+          shouldPlay: state.playbackIntentPlaying,
           paused: player.paused,
           time: player.currentTime,
           timestamp: now
@@ -570,21 +584,30 @@
     }
 
     if (action === "pause") {
+      state.playbackIntentPlaying = false;
       player.pause();
       addLog(`${data.username} paused at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
     }
 
     if (action === "play") {
+      state.playbackIntentPlaying = true;
       forceResumePlayback(player, remoteTime);
       schedulePlaybackVerification(player, remoteTime, true);
       addLog(`${data.username} resumed at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
     }
 
     if (action === "seek") {
-      if (data.paused === false) {
+      const shouldPlay =
+        typeof data.shouldPlay === "boolean"
+          ? data.shouldPlay
+          : data.paused === false;
+
+      state.playbackIntentPlaying = shouldPlay;
+
+      if (shouldPlay) {
         forceResumePlayback(player, remoteTime);
         schedulePlaybackVerification(player, remoteTime, true);
-      } else if (data.paused === true) {
+      } else {
         player.pause();
       }
       addLog(`${data.username} jumped to ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
@@ -641,8 +664,10 @@
     }
 
     if (data.paused) {
+      state.playbackIntentPlaying = false;
       player.pause();
     } else {
+      state.playbackIntentPlaying = true;
       forceResumePlayback(player, remoteTime);
     }
 
