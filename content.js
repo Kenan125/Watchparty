@@ -483,6 +483,14 @@
 
     player.dataset.wpBound = "1";
 
+    // The video element on Crunchyroll often mounts after the relay
+    // connection is already open, which means the snapshot delivered in
+    // response to our initial sync-request was dropped (no player to
+    // apply it to). Re-request now that we have a player.
+    if (state.connected) {
+      requestSyncSnapshot();
+    }
+
     player.addEventListener("pause", () => {
       if (state.suppressPlayerEvents || !state.connected) {
         return;
