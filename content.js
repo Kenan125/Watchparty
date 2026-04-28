@@ -16,7 +16,6 @@
     suppressPlayerEvents: false,
     lastSeekBroadcastAt: 0,
     pendingSeekTimer: null,
-    playbackVerifyTimer: null,
     forcePlayTimer: null,
     pendingAutoResume: false,
     pendingTargetTime: null,
@@ -48,29 +47,9 @@
   autoConnectFromInviteLink().catch(() => {});
 
   function buildUi() {
-    const existingRoot = document.getElementById("wp-root");
-    const existingLauncher = document.getElementById("wp-launcher");
-    if (existingRoot && existingLauncher) {
-      return {
-        launcher: existingLauncher,
-        root: existingRoot,
-        connection: document.getElementById("wp-connection"),
-        userCount: document.getElementById("wp-user-count"),
-        roomText: document.getElementById("wp-settings-room"),
-        chatTabBtn: document.getElementById("wp-tab-btn-chat"),
-        settingsTabBtn: document.getElementById("wp-tab-btn-settings"),
-        settingsQuickBtn: document.getElementById("wp-settings-quick"),
-        chatTab: document.getElementById("wp-tab-chat"),
-        settingsTab: document.getElementById("wp-tab-settings"),
-        log: document.getElementById("wp-log"),
-        chat: document.getElementById("wp-chat"),
-        form: document.getElementById("wp-chat-form"),
-        input: document.getElementById("wp-chat-input"),
-        settingsName: document.getElementById("wp-settings-name"),
-        saveNameBtn: document.getElementById("wp-settings-save-name"),
-        copyInviteBtn: document.getElementById("wp-settings-copy-link")
-      };
-    }
+    // Remove any leftover UI from a previous injection (e.g. extension reload).
+    document.getElementById("wp-root")?.remove();
+    document.getElementById("wp-launcher")?.remove();
 
     const launcher = document.createElement("button");
     launcher.id = "wp-launcher";
@@ -284,7 +263,6 @@
   function scheduleReconnect() {
     clearTimeout(state.reconnectTimer);
     clearTimeout(state.pendingSeekTimer);
-    clearTimeout(state.playbackVerifyTimer);
     clearTimeout(state.forcePlayTimer);
     clearInterval(state.playerPoller);
     state.playerPoller = null;
@@ -303,8 +281,9 @@
   function disconnect(manual) {
     clearTimeout(state.reconnectTimer);
     clearTimeout(state.pendingSeekTimer);
-    clearTimeout(state.playbackVerifyTimer);
     clearTimeout(state.forcePlayTimer);
+    clearInterval(state.playerPoller);
+    state.playerPoller = null;
     state.pendingAutoResume = false;
     state.pendingTargetTime = null;
     state.unlockNoticeShown = false;
@@ -493,7 +472,6 @@
 
       // Local user interaction should cancel any pending remote force-play logic.
       clearTimeout(state.forcePlayTimer);
-      clearTimeout(state.playbackVerifyTimer);
       state.playbackIntentPlaying = false;
 
       addLog(`${state.username} paused at ${formatVideoTime(player.currentTime)}.`, "system");
@@ -515,7 +493,6 @@
 
       // Local user interaction should cancel any pending remote force-play logic.
       clearTimeout(state.forcePlayTimer);
-      clearTimeout(state.playbackVerifyTimer);
       state.playbackIntentPlaying = true;
 
       addLog(`${state.username} resumed at ${formatVideoTime(player.currentTime)}.`, "system");
@@ -537,7 +514,6 @@
 
       // User scrubbed timeline manually; stop stale remote timers from snapping back.
       clearTimeout(state.forcePlayTimer);
-      clearTimeout(state.playbackVerifyTimer);
 
       clearTimeout(state.pendingSeekTimer);
       state.pendingSeekTimer = setTimeout(() => {
@@ -575,7 +551,6 @@
 
     // Replace any older remote enforcement with the current inbound command.
     clearTimeout(state.forcePlayTimer);
-    clearTimeout(state.playbackVerifyTimer);
 
     state.suppressPlayerEvents = true;
 
@@ -592,7 +567,6 @@
     if (action === "play") {
       state.playbackIntentPlaying = true;
       forceResumePlayback(player, remoteTime);
-      schedulePlaybackVerification(player, remoteTime, true);
       addLog(`${data.username} resumed at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
     }
 
@@ -606,7 +580,6 @@
 
       if (shouldPlay) {
         forceResumePlayback(player, remoteTime);
-        schedulePlaybackVerification(player, remoteTime, true);
       } else {
         player.pause();
       }
@@ -1006,7 +979,9 @@
       }
     };
 
-    tick();
+    // Delay past the suppressPlayerEvents window (80ms) so the first check
+    // doesn't race with programmatic seek/play suppression.
+    state.forcePlayTimer = setTimeout(tick, 120);
   }
 
   function setupAutoResumeUnlock() {
@@ -1041,35 +1016,6 @@
 
     window.addEventListener("pointerdown", tryUnlock, true);
     window.addEventListener("keydown", tryUnlock, true);
-  }
-
-  function schedulePlaybackVerification(player, targetTime, shouldPlay) {
-    clearTimeout(state.playbackVerifyTimer);
-
-    const maxAttempts = 3;
-    let attempt = 0;
-
-    const run = () => {
-      if (!player || state.suppressPlayerEvents) {
-        return;
-      }
-
-      const drift = Number.isFinite(targetTime) ? Math.abs(player.currentTime - targetTime) : 0;
-      if (Number.isFinite(targetTime) && drift > 1.6) {
-        player.currentTime = targetTime;
-      }
-
-      if (shouldPlay && player.paused) {
-        ensurePlaybackStarted(player).catch(() => {});
-      }
-
-      attempt += 1;
-      if (attempt < maxAttempts && shouldPlay && player.paused) {
-        state.playbackVerifyTimer = setTimeout(run, 250);
-      }
-    };
-
-    state.playbackVerifyTimer = setTimeout(run, 120);
   }
 
   window.addEventListener("beforeunload", () => {

@@ -143,13 +143,13 @@ function cleanupSocket(socket) {
   }
 }
 
-function heartbeat() {
-  this.isAlive = true;
-}
+const BROADCAST_TYPES = new Set(["chat", "control", "sync-request", "sync-state", "join", "leave"]);
 
 wss.on("connection", (socket) => {
   socket.isAlive = true;
-  socket.on("pong", heartbeat);
+  socket.on("pong", () => {
+    socket.isAlive = true;
+  });
 
   socket.meta = {
     room: null,
@@ -192,6 +192,10 @@ wss.on("connection", (socket) => {
     }
 
     if (!socket.meta.room) {
+      if (data.type !== "join") {
+        return;
+      }
+
       const roomEntry = ensureRoom(room);
 
       if (roomEntry.members.size === 0) {
@@ -240,6 +244,10 @@ wss.on("connection", (socket) => {
 
     if (data.type === "leave") {
       cleanupSocket(socket);
+      return;
+    }
+
+    if (!BROADCAST_TYPES.has(data.type)) {
       return;
     }
 
