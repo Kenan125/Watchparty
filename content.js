@@ -207,15 +207,24 @@
 
     setConnectionStatus("Connecting...");
 
+    let ws;
     try {
-      state.ws = new WebSocket(serverUrl);
+      ws = new WebSocket(serverUrl);
     } catch (err) {
       addLog(`Failed to connect: ${err.message || "unknown error"}`, "system");
       setConnectionStatus("Connection failed");
       return;
     }
 
-    state.ws.addEventListener("open", () => {
+    state.ws = ws;
+
+    // Each handler guards on `state.ws !== ws` so that events from a
+    // socket we already replaced (e.g. via reconnect) cannot clobber the
+    // current connection's state.
+    ws.addEventListener("open", () => {
+      if (state.ws !== ws) {
+        return;
+      }
       state.connected = true;
       setConnectionStatus(`Online - ${state.username}@${state.room}`);
       ui.root.classList.add("wp-open");
@@ -235,7 +244,10 @@
       requestSyncSnapshot();
     });
 
-    state.ws.addEventListener("close", () => {
+    ws.addEventListener("close", () => {
+      if (state.ws !== ws) {
+        return;
+      }
       const hadRoom = Boolean(state.room);
       state.connected = false;
       setConnectionStatus("Offline");
@@ -251,11 +263,17 @@
       }
     });
 
-    state.ws.addEventListener("error", () => {
+    ws.addEventListener("error", () => {
+      if (state.ws !== ws) {
+        return;
+      }
       addLog("Relay socket error.", "system");
     });
 
-    state.ws.addEventListener("message", (event) => {
+    ws.addEventListener("message", (event) => {
+      if (state.ws !== ws) {
+        return;
+      }
       handleSocketMessage(event.data);
     });
   }
@@ -464,6 +482,14 @@
     }
 
     player.dataset.wpBound = "1";
+
+    // The video element on Crunchyroll often mounts after the relay
+    // connection is already open, which means the snapshot delivered in
+    // response to our initial sync-request was dropped (no player to
+    // apply it to). Re-request now that we have a player.
+    if (state.connected) {
+      requestSyncSnapshot();
+    }
 
     player.addEventListener("pause", () => {
       if (state.suppressPlayerEvents || !state.connected) {
