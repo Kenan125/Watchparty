@@ -172,8 +172,6 @@ wss.on("connection", (socket) => {
       return;
     }
 
-    const roomPassword = typeof data.roomPassword === "string" ? data.roomPassword : "";
-
     if (room.length > 80) {
       return;
     }
@@ -186,26 +184,12 @@ wss.on("connection", (socket) => {
       return;
     }
 
-    if (roomPassword.length > 80) {
-      return;
-    }
-
     if (!socket.meta.room) {
       if (data.type !== "join") {
         return;
       }
 
       const roomEntry = ensureRoom(room);
-
-      if (roomEntry.members.size === 0) {
-        roomEntry.password = roomPassword;
-      }
-
-      if (roomEntry.password !== roomPassword) {
-        sendError(socket, "AUTH_FAILED", "Wrong room password.");
-        socket.close();
-        return;
-      }
 
       const requestedUsername = normalizeUsername(data.username);
       const assignedUsername = getUniqueUsername(roomEntry, requestedUsername);
@@ -231,13 +215,6 @@ wss.on("connection", (socket) => {
     }
 
     if (socket.meta.room !== room) {
-      return;
-    }
-
-    const currentRoom = rooms.get(room);
-    if (!currentRoom || currentRoom.password !== roomPassword) {
-      sendError(socket, "AUTH_FAILED", "Wrong room password.");
-      socket.close();
       return;
     }
 
