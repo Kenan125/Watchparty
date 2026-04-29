@@ -156,23 +156,25 @@
       copyInviteBtn: root.querySelector("#wp-settings-copy-link")
     };
 
-    const toggleLauncher = (event) => {
+    const handleLauncherPress = (event) => {
       const target = event.target;
       if (!target || !target.closest || !target.closest("#wp-launcher")) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
+      if (event.stopImmediatePropagation) {
+        event.stopImmediatePropagation();
+      }
+      if (event.type !== "pointerdown") {
+        return;
+      }
       const open = refs.root.classList.toggle("wp-open");
       refs.launcher.classList.toggle("wp-launcher-active", open);
     };
-    document.addEventListener("click", toggleLauncher, true);
-    document.addEventListener("pointerdown", (event) => {
-      const target = event.target;
-      if (target && target.closest && target.closest("#wp-launcher")) {
-        event.stopPropagation();
-      }
-    }, true);
+    window.addEventListener("pointerdown", handleLauncherPress, true);
+    window.addEventListener("click", handleLauncherPress, true);
+    window.addEventListener("mousedown", handleLauncherPress, true);
 
     refs.chatTabBtn.addEventListener("click", () => {
       switchTab("chat");
