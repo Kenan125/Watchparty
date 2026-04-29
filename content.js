@@ -26,8 +26,7 @@
     player: null,
     playerPoller: null,
     pendingSyncSnapshot: null,
-    awaitingInitialSync: false,
-    mismatchNotices: new Set()
+    awaitingInitialSync: false
   };
 
   const ui = buildUi();
