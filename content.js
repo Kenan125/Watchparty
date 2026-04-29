@@ -157,7 +157,8 @@
     };
 
     refs.launcher.addEventListener("click", () => {
-      refs.root.classList.toggle("wp-open");
+      const open = refs.root.classList.toggle("wp-open");
+      refs.launcher.classList.toggle("wp-launcher-active", open);
     });
 
     refs.chatTabBtn.addEventListener("click", () => {
