@@ -322,8 +322,13 @@
       });
     }
 
+    if (state.wsAbort) {
+      state.wsAbort.abort();
+      state.wsAbort = null;
+    }
+
     if (state.ws) {
-      state.ws.close();
+      try { state.ws.close(); } catch {}
       state.ws = null;
     }
 
@@ -337,6 +342,8 @@
       state.room = null;
       state.username = null;
       state.serverUrl = null;
+      state.reconnectAttempts = 0;
+      state.disconnectLogged = false;
       ui.roomText.textContent = "Not connected";
     }
   }
