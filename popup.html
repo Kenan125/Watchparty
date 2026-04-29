@@ -14,21 +14,21 @@
     </div>
     <p class="subtitle">Sync playback, chat, and activity logs.</p>
 
+    <div class="relay-row">
+      <span id="relayDot" class="dot dot-off"></span>
+      <span id="relayStatus">Relay: Checking...</span>
+      <span id="relayUsers" class="relay-users"></span>
+    </div>
+
     <label for="username">Username (optional)</label>
     <div class="username-row">
       <input id="username" type="text" placeholder="Auto guest name" maxlength="24" />
       <button id="randomNameBtn" type="button" class="secondary slim">Random</button>
     </div>
 
-    <label for="room">Party Room</label>
-    <input id="room" type="text" placeholder="anime-night" maxlength="40" />
-
-    <label for="roomPassword">Room Password (optional)</label>
-    <input id="roomPassword" type="password" placeholder="set a shared password" maxlength="64" />
-
-    <label for="inviteCode">Invite Link (paste in browser tab)</label>
+    <label for="inviteCode">Invite Link</label>
     <div class="invite-row">
-      <input id="inviteCode" type="text" placeholder="https://watchparty.party/join?wp=..." />
+      <input id="inviteCode" type="text" placeholder="Click 'Create Room' to generate" readonly />
       <button id="copyInviteBtn" type="button" class="secondary slim">Copy</button>
     </div>
 
@@ -37,7 +37,7 @@
       <button id="disconnectBtn" class="secondary">Disconnect</button>
     </div>
 
-    <p id="status" class="status">Not connected.</p>
+    <p id="status" class="status">Open a Crunchyroll episode tab to start.</p>
   </main>
   <script src="popup.js"></script>
 </body>
