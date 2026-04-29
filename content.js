@@ -433,10 +433,6 @@
     }
 
     if (data.type === "control") {
-      if (!isSamePage(data.pageKey)) {
-        addMismatchNotice(data);
-        return;
-      }
       applyRemoteControl(data);
       return;
     }
@@ -447,10 +443,6 @@
     }
 
     if (data.type === "sync-state") {
-      if (!isSamePage(data.pageKey)) {
-        addMismatchNotice(data);
-        return;
-      }
       applySyncSnapshot(data);
     }
   }
