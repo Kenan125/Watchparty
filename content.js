@@ -128,9 +128,8 @@
         attachLauncherToHeader(launcher);
         return;
       }
-      const slot = document.getElementById("wp-launcher-slot");
       const headerActions = document.querySelector(".header-actions");
-      if (headerActions && (!slot || slot.parentElement !== headerActions)) {
+      if (headerActions && launcher.parentElement !== headerActions) {
         attachLauncherToHeader(launcher);
       }
     });
