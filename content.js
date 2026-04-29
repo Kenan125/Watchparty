@@ -6,12 +6,11 @@
     room: null,
     username: null,
     clientId: `cid-${Math.random().toString(36).slice(2, 10)}`,
-    roomPassword: "",
     serverUrl: null,
     pageKey: normalizePageKey(location.href),
     connected: false,
-    authFailed: false,
     activeTab: "chat",
+    userCount: 0,
     playbackIntentPlaying: false,
     suppressPlayerEvents: false,
     lastSeekBroadcastAt: 0,
@@ -23,31 +22,43 @@
     reconnectTimer: null,
     player: null,
     playerPoller: null,
-    mismatchNotices: new Set(),
-    memberUsernames: new Set()
+    pendingSyncSnapshot: null,
+    awaitingInitialSync: false,
+    mismatchNotices: new Set()
   };
 
   const ui = buildUi();
   setupAutoResumeUnlock();
 
-  chrome.runtime.onMessage.addListener((message) => {
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || !message.type) {
       return;
     }
 
     if (message.type === "WP_CONNECT") {
       connect(message.payload);
+      return;
     }
 
     if (message.type === "WP_DISCONNECT") {
       disconnect(true);
+      return;
+    }
+
+    if (message.type === "WP_STATUS_REQUEST") {
+      sendResponse({
+        connected: state.connected,
+        room: state.room,
+        username: state.username,
+        userCount: state.userCount
+      });
+      return;
     }
   });
 
   autoConnectFromInviteLink().catch(() => {});
 
   function buildUi() {
-    // Remove any leftover UI from a previous injection (e.g. extension reload).
     document.getElementById("wp-root")?.remove();
     document.getElementById("wp-launcher")?.remove();
 
@@ -185,7 +196,7 @@
   }
 
   function connect(payload) {
-    const { serverUrl, username, room, roomPassword } = payload || {};
+    const { serverUrl, username, room } = payload || {};
 
     if (!serverUrl || !username || !room) {
       return;
@@ -196,12 +207,10 @@
     state.serverUrl = serverUrl;
     state.username = username;
     state.room = room;
-    state.roomPassword = roomPassword || "";
-    state.authFailed = false;
     state.playbackIntentPlaying = false;
-    state.memberUsernames.clear();
-    state.memberUsernames.add(state.username);
-    updateUserCount(state.memberUsernames.size);
+    state.pendingSyncSnapshot = null;
+    state.awaitingInitialSync = true;
+    setUserCount(1);
     ui.settingsName.value = state.username;
     ui.roomText.textContent = state.room;
 
@@ -239,14 +248,13 @@
       const hadRoom = Boolean(state.room);
       state.connected = false;
       setConnectionStatus("Offline");
-      state.memberUsernames.clear();
-      updateUserCount(0);
+      setUserCount(0);
 
       if (hadRoom) {
         addLog("Disconnected from relay server.", "system");
       }
 
-      if (state.room && state.username && !state.authFailed) {
+      if (state.room && state.username) {
         scheduleReconnect();
       }
     });
@@ -271,8 +279,7 @@
         connect({
           serverUrl: state.serverUrl,
           username: state.username,
-          room: state.room,
-          roomPassword: state.roomPassword
+          room: state.room
         });
       }
     }, 2000);
@@ -287,6 +294,8 @@
     state.pendingAutoResume = false;
     state.pendingTargetTime = null;
     state.unlockNoticeShown = false;
+    state.pendingSyncSnapshot = null;
+    state.awaitingInitialSync = false;
 
     if (state.connected) {
       sendMessage({
@@ -306,16 +315,13 @@
     state.connected = false;
     setConnectionStatus("Offline");
     state.playbackIntentPlaying = false;
-    state.memberUsernames.clear();
-    updateUserCount(0);
+    setUserCount(0);
 
     if (manual) {
       addLog("Disconnected from party.", "system");
       state.room = null;
       state.username = null;
-      state.roomPassword = "";
       state.serverUrl = null;
-      state.authFailed = false;
       ui.roomText.textContent = "Not connected";
     }
   }
@@ -334,9 +340,6 @@
     }
     if (state.pageKey && !outbound.pageKey) {
       outbound.pageKey = state.pageKey;
-    }
-    if (!("roomPassword" in outbound)) {
-      outbound.roomPassword = state.roomPassword || "";
     }
     if (!("senderId" in outbound)) {
       outbound.senderId = state.clientId;
@@ -360,9 +363,6 @@
     if (data.type === "system" && data.event === "username-updated") {
       const previous = state.username;
       state.username = data.username;
-      state.memberUsernames.delete(previous);
-      state.memberUsernames.add(state.username);
-      updateUserCount(state.memberUsernames.size);
       setConnectionStatus(`Online - ${state.username}@${state.room}`);
       ui.settingsName.value = state.username;
       addLog(
@@ -375,7 +375,7 @@
     }
 
     if (data.type === "system" && data.event === "member-count") {
-      updateUserCount(Number(data.count));
+      setUserCount(Number(data.count));
       return;
     }
 
@@ -394,24 +394,18 @@
 
     if (data.type === "error") {
       addLog(data.message || "Server error.", "system", data.timestamp);
-      if (data.code === "AUTH_FAILED") {
-        state.authFailed = true;
-        setConnectionStatus("Auth failed");
-        if (state.ws) {
-          state.ws.close();
-        }
-      }
       return;
     }
 
     if (data.type === "join") {
-      addMember(data.username);
       addLog(`${data.username} joined.`, "system", data.timestamp);
+      // A new member joined - they will request a snapshot; we publish proactively too
+      // so they can sync even if their request races our open handler.
+      publishSnapshot();
       return;
     }
 
     if (data.type === "leave") {
-      removeMember(data.username);
       addLog(`${data.username} left.`, "system", data.timestamp);
       return;
     }
@@ -449,8 +443,21 @@
         return;
       }
 
+      const wasUnbound = player.dataset.wpBound !== "1";
       attachPlayerListeners();
-      if (player.dataset.wpBound === "1") {
+
+      if (wasUnbound) {
+        if (state.pendingSyncSnapshot) {
+          const pending = state.pendingSyncSnapshot;
+          state.pendingSyncSnapshot = null;
+          state.awaitingInitialSync = false;
+          applySyncSnapshot(pending);
+        } else if (state.connected && state.awaitingInitialSync) {
+          requestSyncSnapshot();
+        }
+      }
+
+      if (player.dataset.wpBound === "1" && !state.pendingSyncSnapshot) {
         clearInterval(state.playerPoller);
         state.playerPoller = null;
       }
@@ -470,7 +477,6 @@
         return;
       }
 
-      // Local user interaction should cancel any pending remote force-play logic.
       clearTimeout(state.forcePlayTimer);
       state.playbackIntentPlaying = false;
 
@@ -491,7 +497,6 @@
         return;
       }
 
-      // Local user interaction should cancel any pending remote force-play logic.
       clearTimeout(state.forcePlayTimer);
       state.playbackIntentPlaying = true;
 
@@ -512,7 +517,6 @@
         return;
       }
 
-      // User scrubbed timeline manually; stop stale remote timers from snapping back.
       clearTimeout(state.forcePlayTimer);
 
       clearTimeout(state.pendingSeekTimer);
@@ -549,7 +553,6 @@
     const remoteTime = Number(data.time);
     const action = data.action;
 
-    // Replace any older remote enforcement with the current inbound command.
     clearTimeout(state.forcePlayTimer);
 
     state.suppressPlayerEvents = true;
@@ -621,8 +624,13 @@
   function applySyncSnapshot(data) {
     const player = getPlayer();
     if (!player) {
+      // Player not loaded yet; queue and apply once it appears.
+      state.pendingSyncSnapshot = data;
+      addLog("Sync received — waiting for video player to load...", "system", data.timestamp);
       return;
     }
+
+    state.awaitingInitialSync = false;
 
     const remoteTime = Number(data.time);
     if (!Number.isFinite(remoteTime)) {
@@ -663,25 +671,10 @@
     ui.connection.textContent = text;
   }
 
-  function updateUserCount(count) {
-    const safe = Number.isFinite(count) ? Math.max(0, count) : state.memberUsernames.size;
+  function setUserCount(count) {
+    const safe = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+    state.userCount = safe;
     ui.userCount.textContent = `Users: ${safe}`;
-  }
-
-  function addMember(username) {
-    if (!username) {
-      return;
-    }
-    state.memberUsernames.add(username);
-    updateUserCount(state.memberUsernames.size);
-  }
-
-  function removeMember(username) {
-    if (!username) {
-      return;
-    }
-    state.memberUsernames.delete(username);
-    updateUserCount(state.memberUsernames.size);
   }
 
   function addLog(text, kind, timestamp) {
@@ -774,40 +767,16 @@
 
     stripInviteParamFromUrl();
 
-    const saved = await chrome.storage.local.get(["wpUsername", "wpRoom", "wpRoomPassword"]);
+    const saved = await chrome.storage.local.get(["wpUsername"]);
     const username = (saved.wpUsername || "").trim() || randomGuestName();
     ui.settingsName.value = username;
-
-    let roomPassword = "";
-    if (invite.hasPassword) {
-      if (saved.wpRoom === invite.room && saved.wpRoomPassword) {
-        roomPassword = String(saved.wpRoomPassword).trim();
-      }
-
-      if (!roomPassword) {
-        roomPassword = window.prompt("This room is password protected. Enter password:", "") || "";
-      }
-
-      roomPassword = roomPassword.trim();
-      if (!roomPassword) {
-        addLog("Invite requires a password. Connect canceled.", "system");
-        return;
-      }
-    }
-
-    await chrome.storage.local.set({
-      wpServerUrl: invite.serverUrl,
-      wpRoom: invite.room,
-      wpRoomPassword: roomPassword
-    });
 
     addLog(`Invite loaded for room ${invite.room}. Connecting as ${username}...`, "system");
 
     connect({
       serverUrl: invite.serverUrl,
       username,
-      room: invite.room,
-      roomPassword
+      room: invite.room
     });
   }
 
@@ -833,8 +802,7 @@
     connect({
       serverUrl: state.serverUrl || RELAY_SERVER,
       username: desired,
-      room: state.room,
-      roomPassword: state.roomPassword
+      room: state.room
     });
   }
 
@@ -844,11 +812,7 @@
       return;
     }
 
-    const payload = {
-      v: 3,
-      room: state.room,
-      hasPassword: Boolean(state.roomPassword)
-    };
+    const payload = { v: 4, room: state.room };
 
     const next = new URL(location.href);
     next.hash = "";
@@ -874,7 +838,7 @@
 
     try {
       const parsed = JSON.parse(atob(decodeURIComponent(wp)));
-      if (!parsed || (parsed.v !== 2 && parsed.v !== 3)) {
+      if (!parsed || ![2, 3, 4].includes(parsed.v)) {
         return null;
       }
 
@@ -884,8 +848,7 @@
 
       return {
         serverUrl: String(parsed.serverUrl || RELAY_SERVER).trim(),
-        room: String(parsed.room).trim(),
-        hasPassword: Boolean(parsed.hasPassword)
+        room: String(parsed.room).trim()
       };
     } catch {
       return null;
@@ -979,8 +942,6 @@
       }
     };
 
-    // Delay past the suppressPlayerEvents window (80ms) so the first check
-    // doesn't race with programmatic seek/play suppression.
     state.forcePlayTimer = setTimeout(tick, 120);
   }
 
