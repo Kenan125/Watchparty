@@ -19,3 +19,14 @@ build/
 relay-server/node_modules/
 
 watchparty-*.zip
+
+# Claude Code
+.claude/
+
+# graphify
+graphify-out/
+.graphify_python
+_COMMUNITY_*.md
+
+# Obsidian
+.obsidian/
