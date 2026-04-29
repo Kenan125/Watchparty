@@ -224,11 +224,17 @@
     } catch (err) {
       addLog(`Failed to connect: ${err.message || "unknown error"}`, "system");
       setConnectionStatus("Connection failed");
+      scheduleReconnect();
       return;
     }
 
+    state.wsAbort = new AbortController();
+    const sig = { signal: state.wsAbort.signal };
+
     state.ws.addEventListener("open", () => {
       state.connected = true;
+      state.reconnectAttempts = 0;
+      state.disconnectLogged = false;
       setConnectionStatus(`Online - ${state.username}@${state.room}`);
       ui.root.classList.add("wp-open");
 
@@ -245,7 +251,7 @@
 
       startPlayerPolling();
       requestSyncSnapshot();
-    });
+    }, sig);
 
     state.ws.addEventListener("close", () => {
       const hadRoom = Boolean(state.room);
@@ -253,22 +259,25 @@
       setConnectionStatus("Offline");
       setUserCount(0);
 
-      if (hadRoom) {
+      if (hadRoom && !state.disconnectLogged) {
         addLog("Disconnected from relay server.", "system");
+        state.disconnectLogged = true;
       }
 
       if (state.room && state.username) {
         scheduleReconnect();
       }
-    });
+    }, sig);
 
     state.ws.addEventListener("error", () => {
-      addLog("Relay socket error.", "system");
-    });
+      if (!state.disconnectLogged) {
+        addLog("Relay socket error.", "system");
+      }
+    }, sig);
 
     state.ws.addEventListener("message", (event) => {
       handleSocketMessage(event.data);
-    });
+    }, sig);
   }
 
   function scheduleReconnect() {
@@ -277,6 +286,9 @@
     clearTimeout(state.forcePlayTimer);
     clearInterval(state.playerPoller);
     state.playerPoller = null;
+    const attempt = state.reconnectAttempts++;
+    const base = Math.min(30000, 2000 * Math.pow(2, attempt));
+    const delay = base + Math.floor(Math.random() * 500);
     state.reconnectTimer = setTimeout(() => {
       if (!state.connected && state.serverUrl && state.username && state.room) {
         connect({
@@ -285,7 +297,7 @@
           room: state.room
         });
       }
-    }, 2000);
+    }, delay);
   }
 
   function disconnect(manual) {
