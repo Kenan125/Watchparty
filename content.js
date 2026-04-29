@@ -211,6 +211,39 @@
     return refs;
   }
 
+  function attachLauncherToHeader(launcher) {
+    const headerActions = document.querySelector(".header-actions");
+    if (!headerActions) {
+      launcher.classList.add("wp-launcher-floating");
+      launcher.classList.remove("wp-launcher-in-header");
+      if (launcher.parentElement !== document.body) {
+        document.body.appendChild(launcher);
+      }
+      return;
+    }
+
+    let slot = document.getElementById("wp-launcher-slot");
+    if (!slot || slot.parentElement !== headerActions) {
+      slot?.remove();
+      slot = document.createElement("div");
+      slot.id = "wp-launcher-slot";
+      slot.className = "nav-horizontal-layout__action-item--KZBne";
+      const searchTile = headerActions.querySelector('a[href="/search"]');
+      const searchItem = searchTile ? searchTile.closest(".nav-horizontal-layout__action-item--KZBne") : null;
+      if (searchItem && searchItem.parentNode === headerActions) {
+        headerActions.insertBefore(slot, searchItem);
+      } else {
+        headerActions.prepend(slot);
+      }
+    }
+
+    if (launcher.parentElement !== slot) {
+      slot.appendChild(launcher);
+    }
+    launcher.classList.add("wp-launcher-in-header");
+    launcher.classList.remove("wp-launcher-floating");
+  }
+
   function switchTab(tabName) {
     state.activeTab = tabName;
     const isChat = tabName === "chat";
