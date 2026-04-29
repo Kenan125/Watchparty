@@ -57,11 +57,6 @@
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
 
-#wp-launcher-slot {
-  display: flex;
-  align-items: center;
-}
-
 #wp-root {
   position: fixed;
   top: 64px;
