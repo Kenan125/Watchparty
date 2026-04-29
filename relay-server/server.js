@@ -21,7 +21,6 @@ function ensureRoom(name) {
   if (!rooms.has(name)) {
     rooms.set(name, {
       members: new Set(),
-      password: "",
       usernames: new Set()
     });
   }
