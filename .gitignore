@@ -26,7 +26,15 @@ watchparty-*.zip
 # graphify
 graphify-out/
 .graphify_python
+.graphify_*.json
+.graphify_*.txt
+.graphify_*.py
 _COMMUNITY_*.md
 
 # Obsidian
 .obsidian/
+*.canvas
+
+# Local notes (not pushed)
+CLAUDE.md
+relay-server.md
