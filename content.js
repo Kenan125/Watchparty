@@ -916,10 +916,6 @@
         return;
       }
 
-      if (Number.isFinite(targetTime) && Math.abs(player.currentTime - targetTime) > 1.8) {
-        player.currentTime = targetTime;
-      }
-
       if (!player.paused) {
         state.pendingAutoResume = false;
         state.pendingTargetTime = null;
