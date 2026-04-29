@@ -120,7 +120,21 @@
       </section>
     `;
 
-    document.body.append(launcher, root);
+    document.body.append(root);
+    attachLauncherToHeader(launcher);
+
+    const headerObserver = new MutationObserver(() => {
+      if (!document.body.contains(launcher)) {
+        attachLauncherToHeader(launcher);
+        return;
+      }
+      const slot = document.getElementById("wp-launcher-slot");
+      const headerActions = document.querySelector(".header-actions");
+      if (headerActions && (!slot || slot.parentElement !== headerActions)) {
+        attachLauncherToHeader(launcher);
+      }
+    });
+    headerObserver.observe(document.documentElement, { childList: true, subtree: true });
 
     const refs = {
       launcher,
