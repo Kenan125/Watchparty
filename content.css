@@ -1,13 +1,55 @@
 #wp-launcher {
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#wp-launcher .wp-launcher-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#wp-launcher .wp-launcher-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+#wp-launcher.wp-launcher-in-header {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  color: #ffffff;
+  opacity: 0.85;
+  transition: background 150ms ease, opacity 150ms ease, color 150ms ease;
+}
+
+#wp-launcher.wp-launcher-in-header:hover,
+#wp-launcher.wp-launcher-in-header:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
+  outline: none;
+}
+
+#wp-launcher.wp-launcher-in-header.wp-launcher-active {
+  color: #f2ac3f;
+  opacity: 1;
+}
+
+#wp-launcher.wp-launcher-floating {
   position: fixed;
-  top: 12px;
+  top: 72px;
   right: 14px;
   width: 42px;
   height: 42px;
-  border: 0;
   border-radius: 12px;
   z-index: 2147483647;
-  cursor: pointer;
   font-size: 12px;
   font-weight: 900;
   color: #102136;
@@ -15,18 +57,24 @@
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
 
+#wp-launcher-slot {
+  display: flex;
+  align-items: center;
+}
+
 #wp-root {
   position: fixed;
-  top: 0;
+  top: 64px;
   right: 0;
   width: 360px;
-  height: 100vh;
+  height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
   z-index: 2147483646;
   color: #e9f4ff;
   font-family: "Segoe UI", Tahoma, sans-serif;
   border-left: 1px solid #33557a;
+  border-top: 1px solid #33557a;
   backdrop-filter: blur(10px);
   background: linear-gradient(150deg, rgba(14, 26, 40, 0.95), rgba(22, 38, 58, 0.95));
   box-shadow: -10px 0 25px rgba(0, 0, 0, 0.4);
