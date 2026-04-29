@@ -63,11 +63,20 @@
   function buildUi() {
     document.getElementById("wp-root")?.remove();
     document.getElementById("wp-launcher")?.remove();
+    document.getElementById("wp-launcher-slot")?.remove();
 
     const launcher = document.createElement("button");
     launcher.id = "wp-launcher";
     launcher.type = "button";
-    launcher.textContent = "WP";
+    launcher.setAttribute("aria-label", "WatchParty");
+    launcher.title = "WatchParty";
+    launcher.innerHTML = `
+      <span class="wp-launcher-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M3 5h18v11H3V5zm2 2v7h14V7H5zm3 12h8v2H8v-2zm2-9.5 5 2.5-5 2.5v-5z" fill="currentColor"/>
+        </svg>
+      </span>
+    `;
 
     const root = document.createElement("section");
     root.id = "wp-root";
