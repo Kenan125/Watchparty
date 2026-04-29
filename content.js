@@ -760,26 +760,6 @@
     return noTrailing.toLowerCase();
   }
 
-  function isSamePage(remotePageKey) {
-    if (!remotePageKey) {
-      return true;
-    }
-    return remotePageKey === state.pageKey;
-  }
-
-  function addMismatchNotice(data) {
-    const key = `${data.username || "unknown"}:${data.pageKey || "unknown"}`;
-    if (state.mismatchNotices.has(key)) {
-      return;
-    }
-    state.mismatchNotices.add(key);
-    addLog(
-      `${data.username || "Someone"} is on a different episode. Ignoring sync from that page.`,
-      "system",
-      data.timestamp
-    );
-  }
-
   async function autoConnectFromInviteLink() {
     const invite = parseInviteFromUrl();
     if (!invite) {
