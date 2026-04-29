@@ -667,7 +667,7 @@
 
     setTimeout(() => {
       state.suppressPlayerEvents = false;
-    }, 80);
+    }, 1500);
   }
 
   function getPlayer() {
