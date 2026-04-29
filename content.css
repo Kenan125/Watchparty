@@ -273,8 +273,8 @@
     width: min(88vw, 360px);
   }
 
-  #wp-launcher {
-    top: 10px;
+  #wp-launcher.wp-launcher-floating {
+    top: 64px;
     right: 10px;
   }
 }
