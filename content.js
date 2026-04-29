@@ -735,6 +735,13 @@
       return "/";
     }
 
+    // Crunchyroll watch URLs are /watch/{EPISODE_ID}/{slug}. The slug varies by
+    // locale and entry point, so collapse to the episode ID alone.
+    const watchMatch = clean.match(/^\/watch\/([^\/]+)/i);
+    if (watchMatch) {
+      return `/watch/${watchMatch[1].toLowerCase()}`;
+    }
+
     const noTrailing = clean.endsWith("/") && clean.length > 1 ? clean.slice(0, -1) : clean;
     return noTrailing.toLowerCase();
   }
