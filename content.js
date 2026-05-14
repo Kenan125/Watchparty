@@ -672,6 +672,10 @@
       state.playbackIntentPlaying = shouldPlay;
 
       if (shouldPlay) {
+        // Backward seeks can leave the element in paused=false but stalled
+        // (readyState<3). Pause first so forceResumePlayback's paused-check
+        // always nudges play() and re-kicks the buffer.
+        player.pause();
         forceResumePlayback(player, remoteTime);
       } else {
         player.pause();
