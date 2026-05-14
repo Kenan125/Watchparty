@@ -22,7 +22,14 @@
   "content_scripts": [
     {
       "matches": ["https://www.crunchyroll.com/*", "https://beta.crunchyroll.com/*"],
-      "js": ["content.js"],
+      "js": [
+        "content/shared.js",
+        "content/ui.js",
+        "content/network.js",
+        "content/player-sync.js",
+        "content/invite.js",
+        "content/main.js"
+      ],
       "css": ["content.css"],
       "run_at": "document_idle"
     }
