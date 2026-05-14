@@ -90,6 +90,10 @@ function scheduleReconnect() {
   state.pendingRemoteSeekControl = null;
   clearInterval(state.playerPoller);
   state.playerPoller = null;
+  stopSyncPolling();
+  state.lastRemoteTime = null;
+  state.lastRemoteTimestamp = 0;
+  state.lastRemotePaused = true;
   const attempt = state.reconnectAttempts++;
   const base = Math.min(30000, 2000 * Math.pow(2, attempt));
   const delay = base + Math.floor(Math.random() * 500);
@@ -114,6 +118,10 @@ function disconnect(manual) {
   state.pendingRemoteSeekControl = null;
   clearInterval(state.playerPoller);
   state.playerPoller = null;
+  stopSyncPolling();
+  state.lastRemoteTime = null;
+  state.lastRemoteTimestamp = 0;
+  state.lastRemotePaused = true;
   state.pendingAutoResume = false;
   state.pendingTargetTime = null;
   state.unlockNoticeShown = false;

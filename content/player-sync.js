@@ -82,6 +82,10 @@ function attachPlayerListeners() {
 
     clearTimeout(state.pendingPauseTimer);
     clearTimeout(state.forcePlayTimer);
+
+    // User manually resumed — reset any active slowdown.
+    resetPlaybackRate(player);
+
     state.playbackIntentPlaying = true;
 
     addLog(`${state.username} resumed at ${formatVideoTime(player.currentTime)}.`, "system");
@@ -103,6 +107,10 @@ function attachPlayerListeners() {
 
     clearTimeout(state.pendingPauseTimer);
     clearTimeout(state.forcePlayTimer);
+
+    // User manually seeked — reset any active slowdown so their intent
+    // takes priority and we broadcast the authoritative position.
+    resetPlaybackRate(player);
 
     const now = Date.now();
     const shouldPlay = state.playbackIntentPlaying;
@@ -222,7 +230,7 @@ function applyRemoteControlNow(data) {
     return;
   }
 
-  const remoteTime = Number(data.time);
+  const remoteTime = compensateLatency(data);
   const action = data.action;
   const localTimeBeforeSeek = player.currentTime;
   let wasBackwardSeek = false;
@@ -232,30 +240,31 @@ function applyRemoteControlNow(data) {
 
   state.suppressPlayerEvents = true;
 
+  // Track remote state for periodic drift polling.
   if (Number.isFinite(remoteTime)) {
-    if (action === "seek") {
-      const isStalled = player.readyState < HAVE_FUTURE_DATA;
-      const needsSeek = Math.abs(localTimeBeforeSeek - remoteTime) > 0.15 || isStalled;
-      if (needsSeek) {
-        wasBackwardSeek = localTimeBeforeSeek - remoteTime > 0.25;
-        seekPlayerTo(player, remoteTime, {
-          pauseFirst: wasBackwardSeek || isStalled
-        });
-      }
-    } else if (Math.abs(localTimeBeforeSeek - remoteTime) > 1.2) {
-      wasBackwardSeek = localTimeBeforeSeek - remoteTime > 0.25;
-      seekPlayerTo(player, remoteTime);
-    }
+    state.lastRemoteTime = remoteTime;
+    state.lastRemoteTimestamp = data.timestamp || Date.now();
   }
 
   if (action === "pause") {
+    resetPlaybackRate(player);
+    state.lastRemotePaused = true;
     state.playbackIntentPlaying = false;
     player.pause();
     addLog(`${data.username} paused at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
   }
 
   if (action === "play") {
+    state.lastRemotePaused = false;
     state.playbackIntentPlaying = true;
+
+    // Apply multi-tier correction for position drift, then resume.
+    if (Number.isFinite(remoteTime)) {
+      wasBackwardSeek = applyMultiTierCorrection(player, remoteTime, data);
+      if (wasBackwardSeek && player.readyState < HAVE_FUTURE_DATA) {
+        recoverStalledBuffer(player, remoteTime);
+      }
+    }
     forceResumePlayback(player, remoteTime);
     addLog(`${data.username} resumed at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
   }
@@ -267,6 +276,21 @@ function applyRemoteControlNow(data) {
         : data.paused === false;
 
     state.playbackIntentPlaying = shouldPlay;
+    state.lastRemotePaused = !shouldPlay;
+
+    // Explicit seek: always match position (intentional jump).
+    // Multi-tier slowdown is for playback drift, not deliberate seeks.
+    if (Number.isFinite(remoteTime)) {
+      resetPlaybackRate(player);
+      const isStalled = player.readyState < HAVE_FUTURE_DATA;
+      const needsSeek = Math.abs(player.currentTime - remoteTime) > 0.15 || isStalled;
+      if (needsSeek) {
+        wasBackwardSeek = player.currentTime - remoteTime > 0.25;
+        seekPlayerTo(player, remoteTime, {
+          pauseFirst: wasBackwardSeek || isStalled
+        });
+      }
+    }
 
     if (shouldPlay) {
       const needsPauseKick = wasBackwardSeek || player.readyState < HAVE_FUTURE_DATA;
@@ -281,6 +305,11 @@ function applyRemoteControlNow(data) {
       player.pause();
     }
     addLog(`${data.username} jumped to ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
+  }
+
+  // Start polling if not already running (kicks in after first control message).
+  if (!state.syncPollTimer && state.connected && Number.isFinite(remoteTime)) {
+    startSyncPolling();
   }
 
   setTimeout(() => {
@@ -326,12 +355,19 @@ function applySyncSnapshot(data) {
 
   state.awaitingInitialSync = false;
 
-  const remoteTime = Number(data.time);
+  const remoteTime = compensateLatency(data);
   if (!Number.isFinite(remoteTime)) {
     return;
   }
 
+  // Seed remote state for drift polling.
+  state.lastRemoteTime = remoteTime;
+  state.lastRemoteTimestamp = data.timestamp || Date.now();
+  state.lastRemotePaused = true;
+
   state.suppressPlayerEvents = true;
+
+  resetPlaybackRate(player);
 
   if (Math.abs(player.currentTime - remoteTime) > 2) {
     seekPlayerTo(player, remoteTime);
@@ -341,6 +377,9 @@ function applySyncSnapshot(data) {
   // New joiner always starts paused so both sides are in sync.
   state.playbackIntentPlaying = false;
   player.pause();
+
+  // Start periodic drift correction now that we have a reference point.
+  startSyncPolling();
 
   setTimeout(() => {
     state.suppressPlayerEvents = false;
@@ -355,6 +394,129 @@ function getPlayer() {
   const player = document.querySelector("video");
   state.player = player || null;
   return state.player;
+}
+
+// --- Multi-tier sync helpers (Syncplay-inspired) ---
+
+function resetPlaybackRate(player) {
+  if (!player) {
+    return;
+  }
+  if (player.playbackRate !== 1.0) {
+    player.playbackRate = 1.0;
+    state.speedChanged = false;
+  }
+}
+
+function compensateLatency(data) {
+  // Adjust remote time by estimated message age so we target where the
+  // remote player *is now*, not where it was when the message was sent.
+  if (!data.timestamp) {
+    return Number(data.time);
+  }
+  const messageAgeMs = Date.now() - data.timestamp;
+  const messageAgeSec = Math.min(messageAgeMs / 1000, 5); // cap at 5s
+  return Number(data.time) + messageAgeSec;
+}
+
+function applyMultiTierCorrection(player, remoteTime, data) {
+  if (!player || !Number.isFinite(remoteTime)) {
+    return;
+  }
+
+  const diff = player.currentTime - remoteTime;
+
+  // Tier 2: Rewind — way ahead, seek back.
+  if (diff > REWIND_THRESHOLD) {
+    resetPlaybackRate(player);
+    const wasBackward = true;
+    seekPlayerTo(player, remoteTime, { pauseFirst: true });
+    addLog(`Rewound to sync with ${data.username} (${diff.toFixed(1)}s ahead).`, "system", data.timestamp);
+    return wasBackward;
+  }
+
+  // Tier 3: Fast-forward — way behind, seek ahead.
+  if (diff < -FASTFORWARD_THRESHOLD) {
+    resetPlaybackRate(player);
+    seekPlayerTo(player, remoteTime + FASTFORWARD_EXTRA_TIME);
+    addLog(`Fast-forwarded to sync with ${data.username} (${Math.abs(diff).toFixed(1)}s behind).`, "system", data.timestamp);
+    return false;
+  }
+
+  // Tier 1: Slowdown — slightly ahead, reduce playback rate.
+  if (diff > SLOWDOWN_KICKIN_THRESHOLD && !state.speedChanged) {
+    player.playbackRate = SLOWDOWN_RATE;
+    state.speedChanged = true;
+    return false;
+  }
+
+  // Reset slowdown when close enough.
+  if (state.speedChanged && Math.abs(diff) < SLOWDOWN_RESET_THRESHOLD) {
+    resetPlaybackRate(player);
+  }
+
+  return false;
+}
+
+function startSyncPolling() {
+  stopSyncPolling();
+  state.syncPollTimer = setInterval(() => {
+    const player = getPlayer();
+    if (!player || !state.connected) {
+      return;
+    }
+    // Don't poll while user is actively seeking or we're applying a remote control.
+    if (state.suppressPlayerEvents) {
+      return;
+    }
+    // Don't poll during pending auto-resume (waiting for user gesture).
+    if (state.pendingAutoResume) {
+      return;
+    }
+    // Only poll when we have a recent remote reference and remote is playing.
+    if (state.lastRemoteTime === null || state.lastRemotePaused) {
+      return;
+    }
+    // Don't poll if local player is paused (user paused locally).
+    if (player.paused && !state.playbackIntentPlaying) {
+      return;
+    }
+
+    // Estimate where the remote player should be now.
+    const ageSec = (Date.now() - state.lastRemoteTimestamp) / 1000;
+    const estimatedRemote = state.lastRemoteTime + Math.min(ageSec, 10);
+    const diff = player.currentTime - estimatedRemote;
+
+    // Only correct if we've drifted meaningfully but not so much that
+    // an event-driven correction should have already fired.
+    if (Math.abs(diff) < 0.3) {
+      // Close enough — ensure speed is normal.
+      if (state.speedChanged) {
+        resetPlaybackRate(player);
+      }
+      return;
+    }
+
+    if (diff > REWIND_THRESHOLD || diff < -FASTFORWARD_THRESHOLD) {
+      // Large drift — don't silently correct here; wait for an event or
+      // the next sync-state. Just reset speed so we don't compound the issue.
+      resetPlaybackRate(player);
+      return;
+    }
+
+    // Gentle slowdown / speedup for minor drift.
+    if (diff > SLOWDOWN_KICKIN_THRESHOLD && !state.speedChanged) {
+      player.playbackRate = SLOWDOWN_RATE;
+      state.speedChanged = true;
+    } else if (state.speedChanged && Math.abs(diff) < SLOWDOWN_RESET_THRESHOLD) {
+      resetPlaybackRate(player);
+    }
+  }, SYNC_POLL_INTERVAL_MS);
+}
+
+function stopSyncPolling() {
+  clearInterval(state.syncPollTimer);
+  state.syncPollTimer = null;
 }
 
 async function ensurePlaybackStarted(player) {
