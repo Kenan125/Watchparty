@@ -745,7 +745,7 @@
     state.suppressPlayerEvents = true;
 
     if (Math.abs(player.currentTime - remoteTime) > 2) {
-      player.currentTime = remoteTime;
+      seekPlayerTo(player, remoteTime);
       addLog(`Synced to ${data.username} at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
     }
 
