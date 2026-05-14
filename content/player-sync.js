@@ -245,12 +245,7 @@ function applyRemoteControlNow(data) {
       const needsSeek = Math.abs(localTimeBeforeSeek - remoteTime) > 0.15 || isStalled;
       if (needsSeek) {
         wasBackwardSeek = localTimeBeforeSeek - remoteTime > 0.25;
-        // Rewind: seek 0.1 s ahead of the remote time so the DASH player
-        // fetches a fresh segment instead of stalling on an uncached one.
-        const seekTarget = wasBackwardSeek
-          ? clampSeekTime(player, remoteTime + REWIND_RECOVERY_OFFSET)
-          : remoteTime;
-        seekPlayerTo(player, seekTarget, {
+        seekPlayerTo(player, remoteTime, {
           pauseFirst: wasBackwardSeek || isStalled
         });
       }
@@ -282,19 +277,30 @@ function applyRemoteControlNow(data) {
 
     if (shouldPlay) {
       if (wasBackwardSeek) {
-        // seekPlayerTo already jumped to remoteTime + REWIND_RECOVERY_OFFSET
-        // above — just pause (if needed) and resume from the nudged position.
+        // Rewind: the initial backward seek was applied via seekPlayerTo above.
+        // Pause, then let forceResumePlayback start playback. After a short
+        // delay, nudge forward by REWIND_RECOVERY_OFFSET — DASH players often
+        // stall after a backward seek because old segments aren't cached;
+        // a tiny forward jump forces a fresh segment fetch.
         if (!player.paused) {
           player.pause();
         }
-        forceResumePlayback(player, remoteTime + REWIND_RECOVERY_OFFSET);
+        const rewindRecoveryTarget = clampSeekTime(player, remoteTime + REWIND_RECOVERY_OFFSET);
+        clearTimeout(state.stallNudgeTimer);
+        state.stallNudgeTimer = setTimeout(() => {
+          if (!player || !player.isConnected) return;
+          if (state.suppressPlayerEvents && Math.abs(player.currentTime - remoteTime) < 1.0) {
+            player.currentTime = rewindRecoveryTarget;
+            dispatchProgrammaticSeekEvents(player);
+          }
+        }, 350);
       } else {
-        // Forward seek: keep existing behaviour.
+        // Forward seek: regular handling (preserve existing behaviour).
         if (player.readyState < HAVE_FUTURE_DATA && !player.paused) {
           player.pause();
         }
-        forceResumePlayback(player, remoteTime);
       }
+      forceResumePlayback(player, remoteTime);
     } else {
       player.pause();
     }
