@@ -371,6 +371,7 @@
   function scheduleReconnect() {
     clearTimeout(state.reconnectTimer);
     clearTimeout(state.pendingSeekTimer);
+    clearTimeout(state.stallNudgeTimer);
     clearTimeout(state.forcePlayTimer);
     clearInterval(state.playerPoller);
     state.playerPoller = null;
