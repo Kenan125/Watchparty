@@ -159,6 +159,9 @@
     };
 
     const togglePanel = () => {
+      if (!document.body.contains(refs.root)) {
+        document.body.append(refs.root);
+      }
       const open = refs.root.classList.toggle("wp-open");
       refs.launcher.classList.toggle("wp-launcher-active", open);
     };
