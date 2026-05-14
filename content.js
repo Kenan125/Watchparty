@@ -659,7 +659,7 @@
     state.suppressPlayerEvents = true;
 
     if (Number.isFinite(remoteTime) && Math.abs(player.currentTime - remoteTime) > 1.2) {
-      player.currentTime = remoteTime;
+      seekPlayerTo(player, remoteTime);
     }
 
     if (action === "pause") {
