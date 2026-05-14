@@ -1,5 +1,6 @@
 (() => {
   const RELAY_SERVER = "wss://watchparty-relay.onrender.com";
+  const HAVE_FUTURE_DATA = 3;
 
   const state = {
     ws: null,
@@ -16,7 +17,10 @@
     lastSeekBroadcastAt: 0,
     pendingSeekTimer: null,
     stallNudgeTimer: null,
+    stallNudgeReturnTimer: null,
     forcePlayTimer: null,
+    pendingRemoteSeekTimer: null,
+    pendingRemoteSeekControl: null,
     pendingAutoResume: false,
     pendingTargetTime: null,
     unlockNoticeShown: false,
@@ -372,7 +376,10 @@
     clearTimeout(state.reconnectTimer);
     clearTimeout(state.pendingSeekTimer);
     clearTimeout(state.stallNudgeTimer);
+    clearTimeout(state.stallNudgeReturnTimer);
     clearTimeout(state.forcePlayTimer);
+    clearTimeout(state.pendingRemoteSeekTimer);
+    state.pendingRemoteSeekControl = null;
     clearInterval(state.playerPoller);
     state.playerPoller = null;
     const attempt = state.reconnectAttempts++;
@@ -393,7 +400,10 @@
     clearTimeout(state.reconnectTimer);
     clearTimeout(state.pendingSeekTimer);
     clearTimeout(state.stallNudgeTimer);
+    clearTimeout(state.stallNudgeReturnTimer);
     clearTimeout(state.forcePlayTimer);
+    clearTimeout(state.pendingRemoteSeekTimer);
+    state.pendingRemoteSeekControl = null;
     clearInterval(state.playerPoller);
     state.playerPoller = null;
     state.pendingAutoResume = false;
@@ -648,40 +658,99 @@
     });
   }
 
+  function dispatchProgrammaticSeekEvents(player) {
+    player.dispatchEvent(new Event("seeking", { bubbles: true }));
+    player.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+    player.dispatchEvent(new Event("seeked", { bubbles: true }));
+  }
+
   function seekPlayerTo(player, targetTime) {
     if (!player || !Number.isFinite(targetTime)) {
       return;
     }
 
-    player.currentTime = targetTime;
+    const safeTarget = Number.isFinite(player.duration)
+      ? Math.min(Math.max(0, targetTime), Math.max(0, player.duration - 0.05))
+      : Math.max(0, targetTime);
+    const isBackwardSeek = player.currentTime - safeTarget > 0.25;
 
-    // Crunchyroll's HLS wrapper sometimes ignores a direct currentTime
-    // assignment on backward seeks: it has already discarded the buffer
-    // around `targetTime` and doesn't realize it needs to refetch. Replaying
-    // the standard seek events makes the wrapper sync its internal state and
-    // request the segment. suppressPlayerEvents is set by the caller, so our
-    // own listeners ignore the echoes.
-    try {
-      player.dispatchEvent(new Event("seeking", { bubbles: true }));
-      player.dispatchEvent(new Event("timeupdate", { bubbles: true }));
-      player.dispatchEvent(new Event("seeked", { bubbles: true }));
-    } catch {}
+    if (!player.paused) {
+      player.pause();
+    }
 
-    // Fallback for when the wrapper still doesn't refetch: nudge by 50ms
-    // once the player has had a chance to react. This is the programmatic
-    // version of the user dragging the timeline a hair forward to unfreeze.
+    player.currentTime = safeTarget;
+    dispatchProgrammaticSeekEvents(player);
+
+    // Fallback for backward seeks that still stall after the first jump:
+    // nudge slightly forward, then settle back on the exact target.
     clearTimeout(state.stallNudgeTimer);
+    clearTimeout(state.stallNudgeReturnTimer);
+    if (!isBackwardSeek) {
+      return;
+    }
+
     state.stallNudgeTimer = setTimeout(() => {
-      if (!player.isConnected) return;
+      if (!player.isConnected) {
+        return;
+      }
       // If we've drifted, another seek already happened — let it own the fix.
-      if (Math.abs(player.currentTime - targetTime) > 0.5) return;
-      // HAVE_FUTURE_DATA = 3. Anything lower means the wrapper hasn't fetched.
-      if (player.readyState >= 3) return;
-      player.currentTime = targetTime + 0.05;
+      if (Math.abs(player.currentTime - safeTarget) > 0.5) {
+        return;
+      }
+      if (player.readyState >= HAVE_FUTURE_DATA) {
+        return;
+      }
+
+      const seekCeiling = Number.isFinite(player.duration)
+        ? Math.max(0, player.duration - 0.05)
+        : safeTarget + 0.08;
+      const nudgedTarget = Math.min(safeTarget + 0.08, seekCeiling);
+      if (nudgedTarget <= safeTarget) {
+        return;
+      }
+
+      player.currentTime = nudgedTarget;
+      dispatchProgrammaticSeekEvents(player);
+
+      state.stallNudgeReturnTimer = setTimeout(() => {
+        if (!player.isConnected) {
+          return;
+        }
+        if (Math.abs(player.currentTime - nudgedTarget) > 0.5) {
+          return;
+        }
+        player.currentTime = safeTarget;
+        dispatchProgrammaticSeekEvents(player);
+      }, 70);
     }, 250);
   }
 
   function applyRemoteControl(data) {
+    if (data.action === "seek") {
+      state.pendingRemoteSeekControl = data;
+      clearTimeout(state.pendingRemoteSeekTimer);
+      state.pendingRemoteSeekTimer = setTimeout(() => {
+        const latestSeek = state.pendingRemoteSeekControl;
+        state.pendingRemoteSeekControl = null;
+        if (!latestSeek) {
+          return;
+        }
+        applyRemoteControlNow(latestSeek);
+      }, 120);
+      return;
+    }
+
+    if (state.pendingRemoteSeekControl) {
+      clearTimeout(state.pendingRemoteSeekTimer);
+      const latestSeek = state.pendingRemoteSeekControl;
+      state.pendingRemoteSeekControl = null;
+      applyRemoteControlNow(latestSeek);
+    }
+
+    applyRemoteControlNow(data);
+  }
+
+  function applyRemoteControlNow(data) {
     const player = getPlayer();
     if (!player) {
       return;
@@ -1044,19 +1113,25 @@
         return;
       }
 
-      if (!player.paused) {
+      const hasFutureData = player.readyState >= HAVE_FUTURE_DATA;
+      if (!player.paused && hasFutureData) {
         state.pendingAutoResume = false;
         state.pendingTargetTime = null;
         state.unlockNoticeShown = false;
         return;
       }
 
+      if (!player.paused && !hasFutureData) {
+        player.pause();
+      }
+
       ensurePlaybackStarted(player).catch(() => {});
       attempt += 1;
 
-      if (attempt < maxAttempts && player.paused) {
+      const stillNeedsKick = player.paused || player.readyState < HAVE_FUTURE_DATA;
+      if (attempt < maxAttempts && stillNeedsKick) {
         state.forcePlayTimer = setTimeout(tick, 300);
-      } else if (player.paused) {
+      } else if (stillNeedsKick) {
         state.pendingAutoResume = true;
         state.pendingTargetTime = Number.isFinite(targetTime) ? targetTime : null;
         if (!state.unlockNoticeShown) {
