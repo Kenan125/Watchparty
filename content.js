@@ -120,14 +120,14 @@
       </section>
     `;
 
-    document.body.append(root);
+    mountRoot(root);
     attachLauncherToHeader(launcher);
 
     const headerObserver = new MutationObserver(() => {
-      if (!document.body.contains(root)) {
-        document.body.append(root);
+      if (!root.isConnected) {
+        mountRoot(root);
       }
-      if (!document.body.contains(launcher)) {
+      if (!launcher.isConnected) {
         attachLauncherToHeader(launcher);
         return;
       }
