@@ -15,6 +15,7 @@
     suppressPlayerEvents: false,
     lastSeekBroadcastAt: 0,
     pendingSeekTimer: null,
+    stallNudgeTimer: null,
     forcePlayTimer: null,
     pendingAutoResume: false,
     pendingTargetTime: null,
