@@ -646,6 +646,39 @@
     });
   }
 
+  function seekPlayerTo(player, targetTime) {
+    if (!player || !Number.isFinite(targetTime)) {
+      return;
+    }
+
+    player.currentTime = targetTime;
+
+    // Crunchyroll's HLS wrapper sometimes ignores a direct currentTime
+    // assignment on backward seeks: it has already discarded the buffer
+    // around `targetTime` and doesn't realize it needs to refetch. Replaying
+    // the standard seek events makes the wrapper sync its internal state and
+    // request the segment. suppressPlayerEvents is set by the caller, so our
+    // own listeners ignore the echoes.
+    try {
+      player.dispatchEvent(new Event("seeking", { bubbles: true }));
+      player.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+      player.dispatchEvent(new Event("seeked", { bubbles: true }));
+    } catch {}
+
+    // Fallback for when the wrapper still doesn't refetch: nudge by 50ms
+    // once the player has had a chance to react. This is the programmatic
+    // version of the user dragging the timeline a hair forward to unfreeze.
+    clearTimeout(state.stallNudgeTimer);
+    state.stallNudgeTimer = setTimeout(() => {
+      if (!player.isConnected) return;
+      // If we've drifted, another seek already happened — let it own the fix.
+      if (Math.abs(player.currentTime - targetTime) > 0.5) return;
+      // HAVE_FUTURE_DATA = 3. Anything lower means the wrapper hasn't fetched.
+      if (player.readyState >= 3) return;
+      player.currentTime = targetTime + 0.05;
+    }, 250);
+  }
+
   function applyRemoteControl(data) {
     const player = getPlayer();
     if (!player) {
