@@ -104,29 +104,22 @@ function attachPlayerListeners() {
     clearTimeout(state.pendingPauseTimer);
     clearTimeout(state.forcePlayTimer);
 
-    clearTimeout(state.pendingSeekTimer);
-    state.pendingSeekTimer = setTimeout(() => {
-      if (state.suppressPlayerEvents || !state.connected) {
-        return;
-      }
+    const now = Date.now();
+    const shouldPlay = state.playbackIntentPlaying;
+    state.lastSeekBroadcastAt = now;
 
-      const now = Date.now();
-      const shouldPlay = state.playbackIntentPlaying;
-      state.lastSeekBroadcastAt = now;
-
-      addLog(`${state.username} jumped to ${formatVideoTime(player.currentTime)}.`, "system");
-      sendMessage({
-        type: "control",
-        action: "seek",
-        room: state.room,
-        username: state.username,
-        pageKey: state.pageKey,
-        shouldPlay,
-        paused: player.paused,
-        time: player.currentTime,
-        timestamp: now
-      });
-    }, 140);
+    addLog(`${state.username} jumped to ${formatVideoTime(player.currentTime)}.`, "system");
+    sendMessage({
+      type: "control",
+      action: "seek",
+      room: state.room,
+      username: state.username,
+      pageKey: state.pageKey,
+      shouldPlay,
+      paused: player.paused,
+      time: player.currentTime,
+      timestamp: now
+    });
   });
 }
 
@@ -292,7 +285,7 @@ function applyRemoteControlNow(data) {
 
   setTimeout(() => {
     state.suppressPlayerEvents = false;
-  }, 1500);
+  }, 800);
 }
 
 function requestSyncSnapshot() {
@@ -345,17 +338,13 @@ function applySyncSnapshot(data) {
     addLog(`Synced to ${data.username} at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
   }
 
-  if (data.paused) {
-    state.playbackIntentPlaying = false;
-    player.pause();
-  } else {
-    state.playbackIntentPlaying = true;
-    forceResumePlayback(player, remoteTime);
-  }
+  // New joiner always starts paused so both sides are in sync.
+  state.playbackIntentPlaying = false;
+  player.pause();
 
   setTimeout(() => {
     state.suppressPlayerEvents = false;
-  }, 1500);
+  }, 800);
 }
 
 function getPlayer() {
@@ -422,7 +411,7 @@ function forceResumePlayback(player, targetTime) {
 
     const stillNeedsKick = player.paused || player.readyState < HAVE_FUTURE_DATA;
     if (attempt < maxAttempts && stillNeedsKick) {
-      state.forcePlayTimer = setTimeout(tick, 300);
+      state.forcePlayTimer = setTimeout(tick, FORCE_PLAY_RETRY_MS);
     } else if (stillNeedsKick) {
       state.pendingAutoResume = true;
       state.pendingTargetTime = Number.isFinite(targetTime) ? targetTime : null;
@@ -433,7 +422,7 @@ function forceResumePlayback(player, targetTime) {
     }
   };
 
-  state.forcePlayTimer = setTimeout(tick, 120);
+  state.forcePlayTimer = setTimeout(tick, FORCE_PLAY_INITIAL_MS);
 }
 
 function setupAutoResumeUnlock() {

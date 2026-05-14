@@ -229,8 +229,14 @@ function handleSocketMessage(raw) {
 
   if (data.type === "join") {
     addLog(`${data.username} joined.`, "system", data.timestamp);
-    // A new member joined - they will request a snapshot; we publish proactively too
-    // so they can sync even if their request races our open handler.
+    // Pause local player so both sides start in sync (paused).
+    const player = getPlayer();
+    if (player && !player.paused) {
+      state.suppressPlayerEvents = true;
+      player.pause();
+      state.playbackIntentPlaying = false;
+      setTimeout(() => { state.suppressPlayerEvents = false; }, 800);
+    }
     publishSnapshot();
     return;
   }

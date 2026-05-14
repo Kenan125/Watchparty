@@ -26,10 +26,12 @@ function sanitizePathKey(pathname) {
 
 const RELAY_SERVER = "wss://watchparty-relay.onrender.com";
 const HAVE_FUTURE_DATA = 3;
-const REMOTE_SEEK_DEBOUNCE_MS = 140;
+const REMOTE_SEEK_DEBOUNCE_MS = 50;
 const STALL_RECOVERY_OFFSET = 0.08;
-const PAUSE_CONFIRM_DELAY_MS = 180;
-const SEEK_PAUSE_GUARD_MS = 500;
+const PAUSE_CONFIRM_DELAY_MS = 60;
+const SEEK_PAUSE_GUARD_MS = 300;
+const FORCE_PLAY_INITIAL_MS = 50;
+const FORCE_PLAY_RETRY_MS = 150;
 
 const state = {
   ws: null,
