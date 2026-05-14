@@ -124,6 +124,9 @@
     attachLauncherToHeader(launcher);
 
     const headerObserver = new MutationObserver(() => {
+      if (!document.body.contains(root)) {
+        document.body.append(root);
+      }
       if (!document.body.contains(launcher)) {
         attachLauncherToHeader(launcher);
         return;
