@@ -276,12 +276,29 @@ function applyRemoteControlNow(data) {
     state.playbackIntentPlaying = shouldPlay;
 
     if (shouldPlay) {
-      const needsPauseKick = wasBackwardSeek || player.readyState < HAVE_FUTURE_DATA;
-      if (needsPauseKick && !player.paused) {
-        player.pause();
-      }
-      if (wasBackwardSeek && player.readyState < HAVE_FUTURE_DATA && Number.isFinite(remoteTime)) {
-        recoverStalledBuffer(player, remoteTime);
+      if (wasBackwardSeek) {
+        // Rewind: the initial backward seek was applied via seekPlayerTo above.
+        // Pause, then let forceResumePlayback start playback. After a short
+        // delay, nudge forward by REWIND_RECOVERY_OFFSET — DASH players often
+        // stall after a backward seek because old segments aren't cached;
+        // a tiny forward jump forces a fresh segment fetch.
+        if (!player.paused) {
+          player.pause();
+        }
+        const rewindRecoveryTarget = clampSeekTime(player, remoteTime + REWIND_RECOVERY_OFFSET);
+        clearTimeout(state.stallNudgeTimer);
+        state.stallNudgeTimer = setTimeout(() => {
+          if (!player || !player.isConnected) return;
+          if (state.suppressPlayerEvents && Math.abs(player.currentTime - remoteTime) < 1.0) {
+            player.currentTime = rewindRecoveryTarget;
+            dispatchProgrammaticSeekEvents(player);
+          }
+        }, 350);
+      } else {
+        // Forward seek: regular handling (preserve existing behaviour).
+        if (player.readyState < HAVE_FUTURE_DATA && !player.paused) {
+          player.pause();
+        }
       }
       forceResumePlayback(player, remoteTime);
     } else {
@@ -375,22 +392,8 @@ async function ensurePlaybackStarted(player) {
 
   try {
     await player.play();
-    return;
   } catch {
-    // Fallback for autoplay policies: muted autoplay is often allowed.
-  }
-
-  const previousMuted = player.muted;
-  player.muted = true;
-
-  try {
-    await player.play();
-    setTimeout(() => {
-      player.muted = previousMuted;
-    }, 250);
-  } catch {
-    player.muted = previousMuted;
-    addLog("Remote play was blocked by browser autoplay policy. Click video once.", "system");
+    // Autoplay can be blocked; caller handles retries and user-unlock flow.
   }
 }
 
