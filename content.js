@@ -1,6 +1,8 @@
 (() => {
   const RELAY_SERVER = "wss://watchparty-relay.onrender.com";
   const HAVE_FUTURE_DATA = 3;
+  const REMOTE_SEEK_DEBOUNCE_MS = 220;
+  const STALL_RECOVERY_OFFSET = 0.35;
 
   const state = {
     ws: null,
@@ -17,7 +19,6 @@
     lastSeekBroadcastAt: 0,
     pendingSeekTimer: null,
     stallNudgeTimer: null,
-    stallNudgeReturnTimer: null,
     forcePlayTimer: null,
     pendingRemoteSeekTimer: null,
     pendingRemoteSeekControl: null,
@@ -376,7 +377,6 @@
     clearTimeout(state.reconnectTimer);
     clearTimeout(state.pendingSeekTimer);
     clearTimeout(state.stallNudgeTimer);
-    clearTimeout(state.stallNudgeReturnTimer);
     clearTimeout(state.forcePlayTimer);
     clearTimeout(state.pendingRemoteSeekTimer);
     state.pendingRemoteSeekControl = null;
@@ -400,7 +400,6 @@
     clearTimeout(state.reconnectTimer);
     clearTimeout(state.pendingSeekTimer);
     clearTimeout(state.stallNudgeTimer);
-    clearTimeout(state.stallNudgeReturnTimer);
     clearTimeout(state.forcePlayTimer);
     clearTimeout(state.pendingRemoteSeekTimer);
     state.pendingRemoteSeekControl = null;
@@ -664,14 +663,36 @@
     player.dispatchEvent(new Event("seeked", { bubbles: true }));
   }
 
+  function clampSeekTime(player, targetTime) {
+    const safeTarget = Number.isFinite(targetTime) ? targetTime : 0;
+    if (Number.isFinite(player.duration)) {
+      return Math.min(Math.max(0, safeTarget), Math.max(0, player.duration - 0.05));
+    }
+    return Math.max(0, safeTarget);
+  }
+
+  function recoverStalledBuffer(player, anchorTime) {
+    if (!player || !player.isConnected) {
+      return false;
+    }
+
+    const baseTime = clampSeekTime(player, anchorTime);
+    const recoveryTarget = clampSeekTime(player, baseTime + STALL_RECOVERY_OFFSET);
+    if (recoveryTarget <= baseTime) {
+      return false;
+    }
+
+    player.currentTime = recoveryTarget;
+    dispatchProgrammaticSeekEvents(player);
+    return true;
+  }
+
   function seekPlayerTo(player, targetTime) {
     if (!player || !Number.isFinite(targetTime)) {
       return;
     }
 
-    const safeTarget = Number.isFinite(player.duration)
-      ? Math.min(Math.max(0, targetTime), Math.max(0, player.duration - 0.05))
-      : Math.max(0, targetTime);
+    const safeTarget = clampSeekTime(player, targetTime);
     const isBackwardSeek = player.currentTime - safeTarget > 0.25;
 
     if (!player.paused) {
@@ -682,9 +703,8 @@
     dispatchProgrammaticSeekEvents(player);
 
     // Fallback for backward seeks that still stall after the first jump:
-    // nudge slightly forward, then settle back on the exact target.
+    // keep the player slightly ahead to force segment fetch.
     clearTimeout(state.stallNudgeTimer);
-    clearTimeout(state.stallNudgeReturnTimer);
     if (!isBackwardSeek) {
       return;
     }
@@ -700,28 +720,7 @@
       if (player.readyState >= HAVE_FUTURE_DATA) {
         return;
       }
-
-      const seekCeiling = Number.isFinite(player.duration)
-        ? Math.max(0, player.duration - 0.05)
-        : safeTarget + 0.08;
-      const nudgedTarget = Math.min(safeTarget + 0.08, seekCeiling);
-      if (nudgedTarget <= safeTarget) {
-        return;
-      }
-
-      player.currentTime = nudgedTarget;
-      dispatchProgrammaticSeekEvents(player);
-
-      state.stallNudgeReturnTimer = setTimeout(() => {
-        if (!player.isConnected) {
-          return;
-        }
-        if (Math.abs(player.currentTime - nudgedTarget) > 0.5) {
-          return;
-        }
-        player.currentTime = safeTarget;
-        dispatchProgrammaticSeekEvents(player);
-      }, 70);
+      recoverStalledBuffer(player, safeTarget);
     }, 250);
   }
 
@@ -736,7 +735,7 @@
           return;
         }
         applyRemoteControlNow(latestSeek);
-      }, 120);
+      }, REMOTE_SEEK_DEBOUNCE_MS);
       return;
     }
 
@@ -763,7 +762,8 @@
 
     state.suppressPlayerEvents = true;
 
-    if (Number.isFinite(remoteTime) && Math.abs(player.currentTime - remoteTime) > 1.2) {
+    const isStalled = player.readyState < HAVE_FUTURE_DATA;
+    if (Number.isFinite(remoteTime) && (Math.abs(player.currentTime - remoteTime) > 1.2 || isStalled)) {
       seekPlayerTo(player, remoteTime);
     }
 
@@ -792,6 +792,9 @@
         // (readyState<3). Pause first so forceResumePlayback's paused-check
         // always nudges play() and re-kicks the buffer.
         player.pause();
+        if (player.readyState < HAVE_FUTURE_DATA && Number.isFinite(remoteTime)) {
+          recoverStalledBuffer(player, remoteTime);
+        }
         forceResumePlayback(player, remoteTime);
       } else {
         player.pause();
@@ -1123,6 +1126,11 @@
 
       if (!player.paused && !hasFutureData) {
         player.pause();
+      }
+
+      if (attempt > 0 && attempt % 3 === 0 && player.readyState < HAVE_FUTURE_DATA) {
+        const anchor = Number.isFinite(targetTime) ? targetTime : player.currentTime;
+        recoverStalledBuffer(player, anchor);
       }
 
       ensurePlaybackStarted(player).catch(() => {});
