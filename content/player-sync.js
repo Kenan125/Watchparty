@@ -364,22 +364,10 @@ async function ensurePlaybackStarted(player) {
 
   try {
     await player.play();
-    return;
   } catch {
-    // Fallback for autoplay policies: muted autoplay is often allowed.
-  }
-
-  const previousMuted = player.muted;
-  player.muted = true;
-
-  try {
-    await player.play();
-    setTimeout(() => {
-      player.muted = previousMuted;
-    }, 250);
-  } catch {
-    player.muted = previousMuted;
-    addLog("Remote play was blocked by browser autoplay policy. Click video once.", "system");
+    // Autoplay blocked — forceResumePlayback will retry or arm the
+    // user-gesture unlock. Don't mute; it's impossible to unmute
+    // programmatically afterwards.
   }
 }
 
