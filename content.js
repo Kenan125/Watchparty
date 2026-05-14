@@ -240,6 +240,17 @@
     return refs;
   }
 
+  function mountRoot(root) {
+    // Crunchyroll's /watch/ pages let React reconcile <body>, which strips
+    // anything we append there. Mounting as a sibling of <body> on the <html>
+    // element keeps the panel outside React's reconciliation root while still
+    // letting position: fixed work normally.
+    const host = document.documentElement || document.body;
+    if (root.parentElement !== host) {
+      host.append(root);
+    }
+  }
+
   function attachLauncherToHeader(launcher) {
     const headerActions = document.querySelector(".header-actions");
     if (!headerActions) {
