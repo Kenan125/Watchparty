@@ -1,4 +1,4 @@
-// Runs only inside Crunchyroll's embedded player. No room, network, or UI panel.
+// Embedded media adapter. Only the autoplay-unlock gesture stays in the player.
 (() => {
   const parentOrigins = new Set(["https://www.crunchyroll.com", "https://beta.crunchyroll.com"]);
   let session = null;
@@ -34,10 +34,7 @@
   function showUnlock() {
     if (!blocked || !playIntent) return;
     if (!unlockButton) {
-      unlockButton = document.createElement("button");
-      unlockButton.textContent = "Enable WatchParty playback";
-      unlockButton.type = "button";
-      unlockButton.style.cssText = "position:fixed;top:20px;left:20px;z-index:2147483647;padding:14px;border:0;border-radius:8px;background:#f47521;color:#111;font:600 16px sans-serif;cursor:pointer";
+      unlockButton = createPlaybackUnlock();
       unlockButton.addEventListener("click", () => {
         if (!playIntent || !player) return;
         const time = target ? target.time + Math.max(0, performance.now() - target.receivedAt) / 1000 * target.rate : player.currentTime;
@@ -76,6 +73,7 @@
     }
     if (data.session !== session || data.type !== "command" || !Number.isSafeInteger(data.id) || data.id <= appliedCommandId) return;
     appliedCommandId = data.id;
+
     if (!player) { send({ type: "result", replyTo: data.id, error: { name: "AbortError", message: "Video is not mounted" } }); return; }
     if (data.action === "intent") {
       playIntent = data.playing === true;

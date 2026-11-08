@@ -13,8 +13,7 @@ function connect(payload, retry = false) {
   state.room = room.trim();
   state.pageKey = normalizePageKey(location.href);
   state.initialSyncPending = true;
-  ui.settingsName.value = state.username;
-  ui.roomText.textContent = state.room;
+
   setConnectionStatus("Connecting...");
   startPlayerPolling();
   let socket;
@@ -88,10 +87,10 @@ function disconnect(manual) {
   setUserCount(0);
   if (manual) {
     state.room = null;
-    state.username = null;
+
     state.serverUrl = null;
     state.reconnectAttempts = 0;
-    ui.roomText.textContent = "Not connected";
+
     addLog("Disconnected from party.", "system");
   }
 }
@@ -137,8 +136,7 @@ function handleSocketMessage(raw) {
     state.username = data.username;
     state.connected = true;
     state.reconnectAttempts = 0;
-    ui.settingsName.value = state.username;
-    ui.root.classList.add("wp-open");
+
     setConnectionStatus(`Online — ${state.username}@${state.room}`);
     chrome.storage.local.set({ wpUsername: state.username }).catch(() => {});
     addLog(`Joined room ${state.room}.`, "system");

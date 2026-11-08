@@ -1,23 +1,25 @@
 {
   "manifest_version": 3,
-  "name": "Crunchyroll WatchParty",
-  "description": "Create watch parties on Crunchyroll with synced playback, chat, and event logs.",
-  "version": "2.0.3",
+  "name": "WatchParty — Watch together",
+  "description": "Your people, the same moment. Synced playback, room invites, and side-panel chat. Currently supports Crunchyroll.",
+  "version": "2.1.0",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "tabs"],
+  "permissions": ["storage", "tabs", "sidePanel"],
+  "minimum_chrome_version": "116",
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "panel.html" },
   "host_permissions": ["https://www.crunchyroll.com/*", "https://beta.crunchyroll.com/*", "https://static.crunchyroll.com/*"],
   "action": {
     "default_title": "WatchParty",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
-    },
-    "default_popup": "popup.html"
+    }
   },
   "content_scripts": [
     {
@@ -33,20 +35,23 @@
         "content/shared.js",
         "content/player-controls.js",
         "content/player-bridge.js",
-        "content/ui.js",
+        "content/side-panel.js",
         "content/network.js",
         "content/player-sync.js",
         "content/invite.js",
         "content/main.js"
       ],
-      "css": ["content.css"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://static.crunchyroll.com/vilos-v2/*"],
-      "js": ["content/player-controls.js", "content/player-frame.js"],
+      "js": ["content/player-controls.js", "content/player-unlock.js", "content/player-frame.js"],
       "all_frames": true,
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "web_accessible_resources": [{
+    "resources": ["host.css"],
+    "matches": ["https://www.crunchyroll.com/*", "https://beta.crunchyroll.com/*", "https://static.crunchyroll.com/*"]
+  }]
 }

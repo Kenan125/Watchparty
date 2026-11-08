@@ -1,0 +1,9 @@
+/* Frame-local autoplay unlock only; loaded inside its Shadow DOM. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) prefix(wp);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(wp) source(none);
+@import "./foundation.css";
+
+:host { @apply wp:box-border! wp:fixed! wp:top-[20px]! wp:left-[20px]! wp:z-[2147483647]! wp:inline-flex! wp:m-0! wp:h-auto! wp:w-auto! wp:cursor-pointer! wp:rounded-[10px]! wp:border-0! wp:bg-periwinkle! wp:px-[14px]! wp:py-[10px]! wp:font-sans! wp:text-[13px]! wp:font-semibold! wp:text-[#131d43]!; }
+:host([hidden]) { @apply wp:hidden!; }
+:host(:focus-visible) { @apply wp:outline-2! wp:outline-offset-2! wp:outline-periwinkle!; }

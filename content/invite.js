@@ -8,7 +8,6 @@ async function autoConnectFromInviteLink() {
 
   const saved = await chrome.storage.local.get(["wpUsername"]);
   const username = (saved.wpUsername || "").trim() || randomGuestName();
-  ui.settingsName.value = username;
 
   addLog(`Invite loaded for room ${invite.room}. Connecting as ${username}...`, "system");
 
@@ -19,9 +18,8 @@ async function autoConnectFromInviteLink() {
   });
 }
 
-async function saveDisplayName() {
-  const desired = (ui.settingsName.value || "").trim() || randomGuestName();
-  ui.settingsName.value = desired;
+async function saveDisplayName(username) {
+  const desired = (username || "").trim() || randomGuestName();
 
   await chrome.storage.local.set({ wpUsername: desired });
 
@@ -43,24 +41,6 @@ async function saveDisplayName() {
     username: desired,
     room: state.room
   });
-}
-
-async function copyInviteLink() {
-  if (!state.room) {
-    addLog("Connect to a room first to copy invite link.", "system");
-    return;
-  }
-
-  const payload = { v: 4, room: state.room };
-
-  const next = new URL(location.href);
-  next.hash = "";
-  next.searchParams.delete("wp");
-  next.searchParams.set("wp", btoa(JSON.stringify(payload)));
-  const inviteLink = next.toString();
-
-  await navigator.clipboard.writeText(inviteLink);
-  addLog("Invite link copied.", "system");
 }
 
 function parseInviteFromUrl() {

@@ -1,21 +1,9 @@
-ui = buildUi();
+setupSidePanel();
 setupPlayerBridge();
 setupLocalSeekListener(handleLocalPlayerControl);
-setupAutoResumeUnlock();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || !message.type) {
-    return;
-  }
-
-  if (message.type === "WP_CONNECT") {
-    sendResponse({ ok: connect(message.payload) });
-    return;
-  }
-
-  if (message.type === "WP_DISCONNECT") {
-    disconnect(true);
-    sendResponse({ ok: true });
     return;
   }
 
@@ -36,4 +24,4 @@ window.addEventListener("beforeunload", () => {
   disconnect(false);
 });
 
-addLog("WatchParty loaded. Connect from extension popup.", "system");
+addLog("WatchParty loaded. Open the extension side panel to start a room.", "system");

@@ -5,7 +5,8 @@ function packageExtension() {
   const root = path.resolve(__dirname, "..");
   const output = path.join(root, "build/extension");
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
-  const assets = new Set(["manifest.json", manifest.action.default_popup, "popup.css", "popup.js",
+  const assets = new Set(["manifest.json", manifest.background.service_worker, manifest.side_panel.default_path, "panel.js", "content.css", "host.css",
+    "content/ui-view.js", "content/ui.js",
     ...Object.values(manifest.icons), ...Object.values(manifest.action.default_icon),
     ...manifest.content_scripts.flatMap((item) => [...item.js, ...(item.css || [])])]);
   // Whitelist assets: repository notes/caches can contain Chrome-reserved names.

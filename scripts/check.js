@@ -16,15 +16,18 @@ function check(directory) {
   }
 }
 for (const directory of ["content", "relay-server", "tests", "scripts"]) check(directory);
-for (const file of ["popup.js", "playwright.config.js"]) {
+for (const file of ["panel.js", "background.js", "playwright.config.js"]) {
   new vm.Script(fs.readFileSync(path.join(root, file), "utf8"), { filename: file });
   count++;
 }
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 assert.equal(manifest.manifest_version, 3);
-assert.deepEqual(manifest.permissions, ["storage", "tabs"]);
+assert.deepEqual(manifest.permissions, ["storage", "tabs", "sidePanel"]);
+assert.equal(manifest.side_panel.default_path, "panel.html");
+assert.equal(manifest.action.default_popup, undefined);
+assert.deepEqual(manifest.content_scripts.flatMap((item) => item.css || []), [], "UI CSS must stay in the isolated panel document");
+for (const asset of manifest.web_accessible_resources.flatMap((item) => item.resources)) assert.ok(fs.existsSync(path.join(root, asset)), asset);
 for (const script of manifest.content_scripts.flatMap((item) => item.js)) assert.ok(fs.existsSync(path.join(root, script)), script);
-const relay = (file) => fs.readFileSync(path.join(root, file), "utf8").match(/const RELAY_SERVER = "([^"]+)"/)[1];
-assert.equal(relay("popup.js"), relay("content/shared.js"));
+
 assert.equal(manifest.version, JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version);
-console.log(`Syntax checked ${count} JavaScript files; manifest assets, permissions, version, and relay URLs verified.`);
+console.log(`Syntax checked ${count} JavaScript files; manifest assets, permissions, version, and Side Panel entry verified.`);

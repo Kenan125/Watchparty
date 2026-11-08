@@ -9,7 +9,6 @@ function createHarness(options = {}) {
   let nextId = 1;
   const timers = new Map();
   const sent = [];
-  const logs = [];
   const videos = [];
   const sockets = [];
   const window = new EventTarget();
@@ -84,27 +83,62 @@ function createHarness(options = {}) {
       schedule(() => this.dispatchEvent(new Event("close")));
     }
   }
-  const elements = () => Object.assign(new EventTarget(), { value: "", textContent: "", hidden: true, classList: { add() {}, remove() {} } });
+  const document = Object.assign(new EventTarget(), {
+    title: "Episode",
+    contains: (p) => p.isConnected,
+    querySelector: (selector) => selector === "video" ? player : null,
+    querySelectorAll: (selector) => selector === "video" && player ? [player] : []
+  });
+  class Element extends EventTarget {
+    constructor(tagName) {
+      super();
+      this.tagName = tagName.toUpperCase();
+      this.attributes = new Map();
+      this.parentNode = null;
+    }
+    setAttribute(name, value) { this.attributes.set(name, String(value)); }
+    getAttribute(name) { return this.attributes.get(name) ?? null; }
+    appendChild(child) { child.parentNode = this; return child; }
+    remove() { this.parentNode = null; }
+    dispatchEvent(event) {
+      const result = super.dispatchEvent(event);
+      if (event.bubbles && this.parentNode) {
+        Object.defineProperty(event, "target", { value: this, configurable: true });
+        document.dispatchEvent(event);
+      }
+      return result;
+    }
+  }
+  document.createElement = (tagName) => new Element(tagName);
+  document.documentElement = new Element("html");
   const context = vm.createContext({
-    console, URL, Event, EventTarget, AbortController, performance: { now: () => now },
+    console, URL, Event, EventTarget, AbortController, btoa, performance: { now: () => now },
     Date: class extends Date { static now() { return now; } },
     location: { href: "https://www.crunchyroll.com/watch/EP1/title", pathname: "/watch/EP1/title" },
-    document: { title: "Episode", contains: (p) => p.isConnected, querySelector: () => player, querySelectorAll: () => player ? [player] : [] },
+    document, Element,
     window,
-    chrome: { storage: { local: { set: async () => {}, get: async () => ({}) } } },
+    chrome: {
+      runtime: {
+        id: "test-extension",
+        getURL: (file) => `chrome-extension://test-extension/${file}`,
+        onConnect: { addListener() {} },
+        onMessage: { addListener() {} }
+      },
+      storage: {
+        local: { set: async () => {}, get: async () => ({}) },
+        onChanged: { addListener() {} }
+      }
+    },
     setTimeout: (fn, ms) => schedule(fn, ms), clearTimeout: (id) => timers.delete(id),
     setInterval: (fn, ms) => schedule(fn, ms, ms), clearInterval: (id) => timers.delete(id),
-    WebSocket: Socket,
-    addLog: (...args) => logs.push(args), addChat() {},
-    formatVideoTime: String, setConnectionStatus() {}, setUserCount() {}
+    WebSocket: Socket
   });
   const run = (source) => vm.runInContext(source, context);
-  for (const file of ["content/shared.js", "content/player-bridge.js", "content/network.js", "content/player-sync.js"]) {
+  for (const file of ["content/player-controls-main.js", "content/shared.js", "content/player-controls.js", "content/player-bridge.js", "content/side-panel.js", "content/network.js", "content/player-sync.js"]) {
     vm.runInContext(fs.readFileSync(path.join(root, file), "utf8"), context, { filename: file });
   }
-  context.testUi = { root: elements(), settingsName: elements(), roomText: elements(), resumeButton: elements() };
   context.testSent = sent;
-  run(`ui = testUi; state.connected = true; state.clientId = "alice"; state.room = "test"; state.username = "Alice";
+  run(`state.connected = true; state.clientId = "alice"; state.room = "test"; state.username = "Alice";
     state.ws = { readyState: 1, send: (raw) => testSent.push(JSON.parse(raw)), close() {} };`);
   run("attachPlayerListeners()");
   const advance = async (ms) => {
@@ -128,7 +162,7 @@ function createHarness(options = {}) {
     }
     for (let i = 0; i < 5; i++) await Promise.resolve();
   };
-  return { context, run, sent, logs, sockets, advance, now: () => now,
+  return { context, run, sent, sockets, advance, now: () => now,
     get player() { return player; },
     replacePlayer() { if (player) player.isConnected = false; player = new Video(); return player; },
     deliver(data) { context.incoming = data; run("handleSocketMessage(JSON.stringify(incoming))"); },

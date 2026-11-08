@@ -1,14 +1,14 @@
-# Privacy Policy for Crunchyroll WatchParty
+# Privacy Policy for WatchParty
 
 Effective date: April 10, 2026
 
 ## Overview
 
-Crunchyroll WatchParty is a browser extension that synchronizes video controls and chat messages between users in a shared room.
+WatchParty is a browser extension that synchronizes video controls and chat messages between users in a shared room. Crunchyroll is the first supported service.
 
 ## Data We Collect
 
-The extension stores only the display name (`wpUsername`) in Chrome extension storage.
+The extension stores the display name (`wpUsername`) and light/dark theme preference (`wpTheme`) in Chrome extension storage.
 Relay URLs, room membership, and playback state are kept in memory while connected.
 The extension does not store or request a Crunchyroll password or authentication token.
 
@@ -25,8 +25,10 @@ When connected to a relay server, the extension sends:
 
 This data is transmitted to the configured relay server so room participants can receive synchronized updates.
 The embedded-player script runs on `static.crunchyroll.com` to access the video.
-It exchanges media state and commands with the Crunchyroll page; only the top page
-connects to the relay. Video/audio content and DRM credentials are not transmitted.
+It exchanges media state and playback commands with the Crunchyroll page; only the top page
+connects to the relay. Chat and room controls appear in the native browser Side Panel,
+which connects to the active supported tab through an extension message port.
+Video/audio content and DRM credentials are not transmitted.
 
 ## Data Sharing
 
@@ -51,7 +53,7 @@ For public use, users should connect with `wss://` relay URLs.
 
 Users can:
 
-- Disconnect at any time
+- Disconnect at any time using Leave room in the Side Panel (closing the panel alone does not disconnect)
 - Change display name or create/join a different room
 - Remove extension to clear behavior
 - Clear extension storage from browser settings
