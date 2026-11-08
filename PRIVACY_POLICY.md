@@ -1,6 +1,6 @@
 # Privacy Policy for WatchParty
 
-Effective date: April 10, 2026
+Effective date: November 8, 2026
 
 ## Overview
 
@@ -21,7 +21,7 @@ When connected to a relay server, the extension sends:
 - Room events (join/leave)
 - Playback controls and periodic playback position, paused/buffering state, and speed
 - Chat messages
-- Episode page key used to prevent cross-episode sync
+- Current supported episode page key used to prevent cross-episode sync (not a general browsing-history log)
 
 This data is transmitted to the configured relay server so room participants can receive synchronized updates.
 The embedded-player script runs on `static.crunchyroll.com` to access the video.
@@ -60,4 +60,4 @@ Users can:
 
 ## Contact
 
-If you publish this extension, replace this section with your support email or project contact link.
+For privacy questions and support, contact the project through [WatchParty's GitHub issues](https://github.com/Kenan125/Watchparty/issues). Do not include passwords, private room links, or sensitive information in public issues.
