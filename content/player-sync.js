@@ -1,610 +1,339 @@
+// Native media events can arrive seconds after a seek. Track the operation,
+// not a suppression timeout, and never manufacture browser media events.
+function getPlayer() {
+  const embedded = getFramePlayer();
+  if (embedded) return embedded;
+  const player = document.querySelector("video");
+  return player?.isConnected ? player : null;
+}
+
 function startPlayerPolling() {
-  attachPlayerListeners();
-
   clearInterval(state.playerPoller);
+  attachPlayerListeners();
   state.playerPoller = setInterval(() => {
-    const player = getPlayer();
-    if (!player) {
-      return;
-    }
-
-    const wasUnbound = player.dataset.wpBound !== "1";
+    updatePageContext();
     attachPlayerListeners();
-
-    if (wasUnbound) {
-      if (state.pendingSyncSnapshot) {
-        const pending = state.pendingSyncSnapshot;
-        state.pendingSyncSnapshot = null;
-        state.awaitingInitialSync = false;
-        applySyncSnapshot(pending);
-      } else if (state.connected && state.awaitingInitialSync) {
-        requestSyncSnapshot();
-      }
+    notifyPlayerReady();
+    if (state.connected) {
+      if (state.controllerId === state.clientId) publishSnapshot();
+      else reconcilePlayer(false);
     }
-
-    if (player.dataset.wpBound === "1" && !state.pendingSyncSnapshot) {
-      clearInterval(state.playerPoller);
-      state.playerPoller = null;
-    }
-  }, 1000);
+  }, 500);
 }
 
 function attachPlayerListeners() {
   const player = getPlayer();
-  if (!player || player.dataset.wpBound === "1") {
-    return;
-  }
-
-  player.dataset.wpBound = "1";
+  if (player === state.player) return;
+  state.playerAbort?.abort();
+  cancelPlaybackAttempt();
+  state.player = player;
+  state.remoteSeek = null;
+  state.localSeeking = false;
+  state.expectedPlay = false;
+  state.expectedPause = false;
+  state.playerReadySent = false;
+  state.awaitingPageMedia = false;
+  state.restoringPlayer = Boolean(state.timeline);
+  if (!player) return;
   state.playbackIntentPlaying = !player.paused;
+  state.baseRate = state.timeline?.rate || player.playbackRate || 1;
+  state.playerAbort = new AbortController();
+  const on = (type, fn) => player.addEventListener(type, fn, { signal: state.playerAbort.signal });
 
-  player.addEventListener("seeking", () => {
-    state.lastSeekObservedAt = Date.now();
+  on("seeking", () => {
+    if (state.remoteSeek && Math.abs(player.currentTime - state.remoteSeek.target) < 0.5) return;
+    state.remoteSeek = null;
+    state.localSeeking = true;
+    cancelPlaybackAttempt();
+    clearTimeout(state.pendingSeekTimer);
   });
-
-  player.addEventListener("pause", () => {
-    if (state.suppressPlayerEvents || !state.connected) {
+  on("seeked", () => {
+    if (state.remoteSeek && Math.abs(player.currentTime - state.remoteSeek.target) < 0.5) {
+      if (Number.isFinite(state.remoteSeek.startedAt)) state.seekCost = (performance.now() - state.remoteSeek.startedAt) / 1000;
+      state.remoteSeek = null;
+      reconcilePlayer(false);
       return;
     }
-
-    clearTimeout(state.forcePlayTimer);
-    clearTimeout(state.pendingPauseTimer);
-
-    state.pendingPauseTimer = setTimeout(() => {
-      if (state.suppressPlayerEvents || !state.connected) {
-        return;
-      }
-
-      const recentlySeeked = player.seeking || Date.now() - state.lastSeekObservedAt < SEEK_PAUSE_GUARD_MS;
-      if (!player.paused || recentlySeeked) {
-        return;
-      }
-
-      state.playbackIntentPlaying = false;
-
-      addLog(`${state.username} paused at ${formatVideoTime(player.currentTime)}.`, "system");
-      sendMessage({
-        type: "control",
-        action: "pause",
-        room: state.room,
-        username: state.username,
-        pageKey: state.pageKey,
-        time: player.currentTime,
-        timestamp: Date.now()
-      });
-    }, PAUSE_CONFIRM_DELAY_MS);
+    state.remoteSeek = null;
+    state.localSeeking = false;
+    if (!state.connected) return;
+    clearTimeout(state.pendingSeekTimer);
+    state.pendingSeekTimer = setTimeout(() => {
+      state.pendingSeekTimer = null;
+      broadcastControl("seek");
+    }, 120);
   });
-
-  player.addEventListener("play", () => {
-    if (state.suppressPlayerEvents || !state.connected) {
+  on("play", () => {
+    if (state.expectedPlay) {
+      state.expectedPlay = false;
       return;
     }
-
-    clearTimeout(state.pendingPauseTimer);
-    clearTimeout(state.forcePlayTimer);
-
-    // User manually resumed — reset any active slowdown.
-    resetPlaybackRate(player);
-
+    if (state.restoringPlayer) return;
+    if (state.playbackIntentPlaying && state.timeline && !state.timeline.paused && !state.localSeeking) {
+      state.pendingAutoResume = false;
+      if (ui?.resumeButton) ui.resumeButton.hidden = true;
+      return;
+    }
     state.playbackIntentPlaying = true;
-
-    addLog(`${state.username} resumed at ${formatVideoTime(player.currentTime)}.`, "system");
-    sendMessage({
-      type: "control",
-      action: "play",
-      room: state.room,
-      username: state.username,
-      pageKey: state.pageKey,
-      time: player.currentTime,
-      timestamp: Date.now()
-    });
+    if (!state.localSeeking) broadcastControl("play");
   });
-
-  player.addEventListener("seeked", () => {
-    if (state.suppressPlayerEvents || !state.connected) {
+  on("pause", () => {
+    if (state.expectedPause) {
+      state.expectedPause = false;
       return;
     }
-
-    clearTimeout(state.pendingPauseTimer);
-    clearTimeout(state.forcePlayTimer);
-
-    // User manually seeked — reset any active slowdown so their intent
-    // takes priority and we broadcast the authoritative position.
-    resetPlaybackRate(player);
-
-    const now = Date.now();
-    const shouldPlay = state.playbackIntentPlaying;
-    state.lastSeekBroadcastAt = now;
-
-    addLog(`${state.username} jumped to ${formatVideoTime(player.currentTime)}.`, "system");
-    sendMessage({
-      type: "control",
-      action: "seek",
-      room: state.room,
-      username: state.username,
-      pageKey: state.pageKey,
-      shouldPlay,
-      paused: player.paused,
-      time: player.currentTime,
-      timestamp: now
-    });
-  });
-}
-
-function dispatchProgrammaticSeekEvents(player) {
-  player.dispatchEvent(new Event("seeking", { bubbles: true }));
-  player.dispatchEvent(new Event("timeupdate", { bubbles: true }));
-  player.dispatchEvent(new Event("seeked", { bubbles: true }));
-}
-
-function clampSeekTime(player, targetTime) {
-  const safeTarget = Number.isFinite(targetTime) ? targetTime : 0;
-  if (Number.isFinite(player.duration)) {
-    return Math.min(Math.max(0, safeTarget), Math.max(0, player.duration - 0.05));
-  }
-  return Math.max(0, safeTarget);
-}
-
-function recoverStalledBuffer(player, anchorTime) {
-  if (!player || !player.isConnected) {
-    return false;
-  }
-
-  const baseTime = clampSeekTime(player, anchorTime);
-  const recoveryTarget = clampSeekTime(player, baseTime + STALL_RECOVERY_OFFSET);
-  if (recoveryTarget <= baseTime) {
-    return false;
-  }
-
-  player.currentTime = recoveryTarget;
-  dispatchProgrammaticSeekEvents(player);
-  return true;
-}
-
-function seekPlayerTo(player, targetTime, options = {}) {
-  if (!player || !Number.isFinite(targetTime)) {
-    return;
-  }
-
-  const { pauseFirst = false } = options;
-  const safeTarget = clampSeekTime(player, targetTime);
-  const isBackwardSeek = player.currentTime - safeTarget > 0.25;
-
-  if (pauseFirst && !player.paused) {
-    player.pause();
-  }
-
-  player.currentTime = safeTarget;
-  dispatchProgrammaticSeekEvents(player);
-
-  // Fallback for backward seeks that still stall after the first jump:
-  // keep the player slightly ahead to force segment fetch.
-  clearTimeout(state.stallNudgeTimer);
-  if (!isBackwardSeek) {
-    return;
-  }
-
-  state.stallNudgeTimer = setTimeout(() => {
-    if (!player.isConnected) {
-      return;
-    }
-    // If we've drifted, another seek already happened — let it own the fix.
-    if (Math.abs(player.currentTime - safeTarget) > 0.5) {
-      return;
-    }
-    if (player.readyState >= HAVE_FUTURE_DATA) {
-      return;
-    }
-    recoverStalledBuffer(player, safeTarget);
-  }, 250);
-}
-
-function applyRemoteControl(data) {
-  if (data.action === "seek") {
-    state.pendingRemoteSeekControl = data;
-    clearTimeout(state.pendingRemoteSeekTimer);
-    state.pendingRemoteSeekTimer = setTimeout(() => {
-      const latestSeek = state.pendingRemoteSeekControl;
-      state.pendingRemoteSeekControl = null;
-      if (!latestSeek) {
-        return;
-      }
-      applyRemoteControlNow(latestSeek);
-    }, REMOTE_SEEK_DEBOUNCE_MS);
-    return;
-  }
-
-  if (state.pendingRemoteSeekControl) {
-    clearTimeout(state.pendingRemoteSeekTimer);
-    const latestSeek = state.pendingRemoteSeekControl;
-    state.pendingRemoteSeekControl = null;
-    applyRemoteControlNow(latestSeek);
-  }
-
-  applyRemoteControlNow(data);
-}
-
-function applyRemoteControlNow(data) {
-  const player = getPlayer();
-  if (!player) {
-    return;
-  }
-
-  const remoteTime = compensateLatency(data);
-  const action = data.action;
-  const localTimeBeforeSeek = player.currentTime;
-  let wasBackwardSeek = false;
-
-  clearTimeout(state.forcePlayTimer);
-  clearTimeout(state.pendingPauseTimer);
-
-  state.suppressPlayerEvents = true;
-
-  // Track remote state for periodic drift polling.
-  if (Number.isFinite(remoteTime)) {
-    state.lastRemoteTime = remoteTime;
-    state.lastRemoteTimestamp = data.timestamp || Date.now();
-  }
-
-  if (action === "pause") {
-    resetPlaybackRate(player);
-    state.lastRemotePaused = true;
+    if (state.restoringPlayer) return;
+    if (state.remoteSeek) return;
     state.playbackIntentPlaying = false;
-    player.pause();
-    addLog(`${data.username} paused at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
-  }
-
-  if (action === "play") {
-    state.lastRemotePaused = false;
-    state.playbackIntentPlaying = true;
-
-    // Apply multi-tier correction for position drift, then resume.
-    if (Number.isFinite(remoteTime)) {
-      wasBackwardSeek = applyMultiTierCorrection(player, remoteTime, data);
-      if (wasBackwardSeek && player.readyState < HAVE_FUTURE_DATA) {
-        recoverStalledBuffer(player, remoteTime);
-      }
-    }
-    forceResumePlayback(player, remoteTime);
-    addLog(`${data.username} resumed at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
-  }
-
-  if (action === "seek") {
-    const shouldPlay =
-      typeof data.shouldPlay === "boolean"
-        ? data.shouldPlay
-        : data.paused === false;
-
-    state.playbackIntentPlaying = shouldPlay;
-    state.lastRemotePaused = !shouldPlay;
-
-    // Explicit seek: always match position (intentional jump).
-    // Multi-tier slowdown is for playback drift, not deliberate seeks.
-    if (Number.isFinite(remoteTime)) {
-      resetPlaybackRate(player);
-      const isStalled = player.readyState < HAVE_FUTURE_DATA;
-      const needsSeek = Math.abs(player.currentTime - remoteTime) > 0.15 || isStalled;
-      if (needsSeek) {
-        wasBackwardSeek = player.currentTime - remoteTime > 0.25;
-        seekPlayerTo(player, remoteTime, {
-          pauseFirst: wasBackwardSeek || isStalled
-        });
-      }
-    }
-
-    if (shouldPlay) {
-      const needsPauseKick = wasBackwardSeek || player.readyState < HAVE_FUTURE_DATA;
-      if (needsPauseKick && !player.paused) {
-        player.pause();
-      }
-      if (wasBackwardSeek && player.readyState < HAVE_FUTURE_DATA && Number.isFinite(remoteTime)) {
-        recoverStalledBuffer(player, remoteTime);
-      }
-      forceResumePlayback(player, remoteTime);
-    } else {
-      player.pause();
-    }
-    addLog(`${data.username} jumped to ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
-  }
-
-  // Start polling if not already running (kicks in after first control message).
-  if (!state.syncPollTimer && state.connected && Number.isFinite(remoteTime)) {
-    startSyncPolling();
-  }
-
-  setTimeout(() => {
-    state.suppressPlayerEvents = false;
-  }, 800);
-}
-
-function requestSyncSnapshot() {
-  sendMessage({
-    type: "sync-request",
-    room: state.room,
-    username: state.username,
-    pageKey: state.pageKey,
-    timestamp: Date.now()
+    if (player.seeking || state.localSeeking) return;
+    broadcastControl("pause");
   });
+  on("ratechange", () => {
+    if (Math.abs(player.playbackRate - state.appliedRate) < 0.001) return;
+    state.baseRate = player.playbackRate;
+    broadcastControl("rate");
+  });
+  on("ended", () => {
+    state.playbackIntentPlaying = false;
+    broadcastControl("pause");
+  });
+  on("loadedmetadata", () => {
+    updatePageContext();
+    state.awaitingPageMedia = false;
+    notifyPlayerReady();
+    reconcilePlayer(true);
+  });
+  on("canplay", () => {
+    reconcilePlayer(false);
+    if (state.controllerId === state.clientId) publishSnapshot(true);
+  });
+  on("waiting", () => {
+    if (state.controllerId === state.clientId) publishSnapshot(true);
+  });
+  on("timeupdate", () => {
+    updatePageContext();
+    if (state.controllerId === state.clientId) publishSnapshot();
+  });
+  notifyPlayerReady();
+  if (state.timeline) reconcilePlayer(true);
+  else if (state.connected) publishSnapshot(true);
 }
 
-function publishSnapshot() {
-  const player = getPlayer();
-  if (!player || !state.connected) {
+function broadcastControl(action) {
+  const player = state.player;
+  updatePageContext();
+  if (!state.connected || !player || player.readyState < 1 || player.seeking || state.awaitingPageMedia || state.initialSyncPending) return;
+  state.restoringPlayer = false;
+  cancelPlaybackAttempt();
+  clearTimeout(state.pendingSeekTimer);
+  state.pendingSeekTimer = null;
+  state.remoteSeek = null;
+  resetPlaybackRate(player);
+  const commandId = ++state.commandId;
+  state.pendingCommandId = commandId;
+  if (!sendMessage({ type: "control", action, commandId, ...playerSnapshot() })) {
+    state.pendingCommandId = 0;
+    state.ws?.close();
     return;
   }
+  addLog(`${state.username}: ${action} at ${formatVideoTime(player.currentTime)}.`, "system");
+}
 
-  sendMessage({
-    type: "sync-state",
-    room: state.room,
-    username: state.username,
+function playerSnapshot() {
+  const player = state.player;
+  return {
     pageKey: state.pageKey,
-    paused: player.paused,
     time: player.currentTime,
-    timestamp: Date.now()
-  });
+    paused: !state.playbackIntentPlaying,
+    buffering: player.readyState < 3 || player.seeking || state.pendingAutoResume,
+    rate: state.baseRate
+  };
+}
+
+function publishSnapshot(force = false) {
+  const player = state.player;
+  if (!state.connected || state.controllerId !== state.clientId || !player || player.readyState < 1 || state.awaitingPageMedia || state.restoringPlayer) return;
+  if (state.localSeeking || state.remoteSeek || state.pendingSeekTimer || state.pendingCommandId) return;
+  if (!force && performance.now() - state.lastReportAt < 1000) return;
+  state.lastReportAt = performance.now();
+  sendMessage({ type: "report", ...playerSnapshot() });
 }
 
 function applySyncSnapshot(data) {
-  const player = getPlayer();
-  if (!player) {
-    // Player not loaded yet; queue and apply once it appears.
-    state.pendingSyncSnapshot = data;
-    addLog("Sync received — waiting for video player to load...", "system", data.timestamp);
+  if (!data || data.pageKey !== state.pageKey || !Number.isFinite(data.time) || data.time < 0 ||
+      typeof data.paused !== "boolean" || !Number.isSafeInteger(data.revision) || data.revision <= state.lastRevision) return;
+  if (state.initialSyncPending || !state.player || state.player.readyState < 1) state.restoringPlayer = true;
+  state.initialSyncPending = false;
+  state.lastRevision = data.revision;
+  state.controllerId = data.controllerId;
+  if (data.senderId === state.clientId && data.commandId >= state.pendingCommandId) state.pendingCommandId = 0;
+  state.timeline = {
+    ...data, rate: Number.isFinite(data.rate) && data.rate >= 0.25 && data.rate <= 4 ? data.rate : 1,
+    receivedAt: performance.now(), transit: snapshotTransit(data)
+  };
+  // Buffer readiness belonged to the departed controller, not its replacement.
+  if (data.cause === "handover" && data.controllerId === state.clientId) state.timeline.buffering = false;
+  if (state.pendingCommandId || state.localSeeking || state.pendingSeekTimer) return;
+  state.baseRate = state.timeline.rate;
+  if (data.senderId !== state.clientId && ["play", "pause", "seek", "rate"].includes(data.cause)) {
+    addLog(`${data.username}: ${data.cause} at ${formatVideoTime(data.time)}.`, "system", data.serverTime);
+  }
+  // The controller reports its actual player; it must not chase its own echo.
+  if (data.senderId === state.clientId && data.cause !== "join" && data.cause !== "page") {
+    if (data.cause === "initial" && state.player?.readyState >= 1) state.restoringPlayer = false;
     return;
   }
-
-  state.awaitingInitialSync = false;
-
-  const remoteTime = compensateLatency(data);
-  if (!Number.isFinite(remoteTime)) {
-    return;
+  if (data.paused || data.buffering || data.cause !== "report") {
+    const blocked = state.pendingAutoResume && !data.paused && !data.buffering;
+    cancelPlaybackAttempt();
+    state.pendingAutoResume = blocked;
+    if (ui?.resumeButton) ui.resumeButton.hidden = !blocked;
   }
-
-  // Seed remote state for drift polling.
-  state.lastRemoteTime = remoteTime;
-  state.lastRemoteTimestamp = data.timestamp || Date.now();
-  state.lastRemotePaused = true;
-
-  state.suppressPlayerEvents = true;
-
-  resetPlaybackRate(player);
-
-  if (Math.abs(player.currentTime - remoteTime) > 2) {
-    seekPlayerTo(player, remoteTime);
-    addLog(`Synced to ${data.username} at ${formatVideoTime(remoteTime)}.`, "system", data.timestamp);
-  }
-
-  // New joiner always starts paused so both sides are in sync.
-  state.playbackIntentPlaying = false;
-  player.pause();
-
-  // Start periodic drift correction now that we have a reference point.
-  startSyncPolling();
-
-  setTimeout(() => {
-    state.suppressPlayerEvents = false;
-  }, 800);
+  reconcilePlayer(data.cause !== "report");
 }
 
-function getPlayer() {
-  if (state.player && document.contains(state.player)) {
-    return state.player;
-  }
-
-  const player = document.querySelector("video");
-  state.player = player || null;
-  return state.player;
+function snapshotTransit(data) {
+  if (data.paused || data.buffering) return 0;
+  const age = state.clockOffset === null ? state.roundTrip / 2 : Date.now() + state.clockOffset - data.serverTime;
+  return Math.max(0, Math.min(1000, Number.isFinite(age) ? age : 0)) / 1000;
 }
 
-// --- Multi-tier sync helpers (Syncplay-inspired) ---
-
-function resetPlaybackRate(player) {
-  if (!player) {
-    return;
-  }
-  if (player.playbackRate !== 1.0) {
-    player.playbackRate = 1.0;
-    state.speedChanged = false;
-  }
+function timelinePosition() {
+  const timeline = state.timeline;
+  if (!timeline) return null;
+  const elapsed = (performance.now() - timeline.receivedAt) / 1000;
+  return timeline.time + (!timeline.paused && !timeline.buffering ? (elapsed + timeline.transit) * timeline.rate : 0);
 }
 
-function compensateLatency(data) {
-  // Adjust remote time by estimated message age so we target where the
-  // remote player *is now*, not where it was when the message was sent.
-  if (!data.timestamp) {
-    return Number(data.time);
-  }
-  const messageAgeMs = Date.now() - data.timestamp;
-  const messageAgeSec = Math.min(messageAgeMs / 1000, 5); // cap at 5s
-  return Number(data.time) + messageAgeSec;
-}
-
-function applyMultiTierCorrection(player, remoteTime, data) {
-  if (!player || !Number.isFinite(remoteTime)) {
-    return;
-  }
-
-  const diff = player.currentTime - remoteTime;
-
-  // Tier 2: Rewind — way ahead, seek back.
-  if (diff > REWIND_THRESHOLD) {
+function reconcilePlayer(forceSeek) {
+  const player = state.player;
+  const timeline = state.timeline;
+  if (timeline?.senderId === state.clientId && state.controllerId === state.clientId && !state.restoringPlayer) return;
+  if (!state.connected || !player || !timeline || timeline.pageKey !== state.pageKey || player.readyState < 1 ||
+      state.pendingCommandId || state.localSeeking || state.pendingSeekTimer || state.awaitingPageMedia) return;
+  if (performance.now() - timeline.receivedAt > 5000) {
     resetPlaybackRate(player);
-    const wasBackward = true;
-    seekPlayerTo(player, remoteTime, { pauseFirst: true });
-    addLog(`Rewound to sync with ${data.username} (${diff.toFixed(1)}s ahead).`, "system", data.timestamp);
-    return wasBackward;
-  }
-
-  // Tier 3: Fast-forward — way behind, seek ahead.
-  if (diff < -FASTFORWARD_THRESHOLD) {
-    resetPlaybackRate(player);
-    seekPlayerTo(player, remoteTime + FASTFORWARD_EXTRA_TIME);
-    addLog(`Fast-forwarded to sync with ${data.username} (${Math.abs(diff).toFixed(1)}s behind).`, "system", data.timestamp);
-    return false;
-  }
-
-  // Tier 1: Slowdown — slightly ahead, reduce playback rate.
-  if (diff > SLOWDOWN_KICKIN_THRESHOLD && !state.speedChanged) {
-    player.playbackRate = SLOWDOWN_RATE;
-    state.speedChanged = true;
-    return false;
-  }
-
-  // Reset slowdown when close enough.
-  if (state.speedChanged && Math.abs(diff) < SLOWDOWN_RESET_THRESHOLD) {
-    resetPlaybackRate(player);
-  }
-
-  return false;
-}
-
-function startSyncPolling() {
-  stopSyncPolling();
-  state.syncPollTimer = setInterval(() => {
-    const player = getPlayer();
-    if (!player || !state.connected) {
-      return;
-    }
-    // Don't poll while user is actively seeking or we're applying a remote control.
-    if (state.suppressPlayerEvents) {
-      return;
-    }
-    // Don't poll during pending auto-resume (waiting for user gesture).
-    if (state.pendingAutoResume) {
-      return;
-    }
-    // Only poll when we have a recent remote reference and remote is playing.
-    if (state.lastRemoteTime === null || state.lastRemotePaused) {
-      return;
-    }
-    // Don't poll if local player is paused (user paused locally).
-    if (player.paused && !state.playbackIntentPlaying) {
-      return;
-    }
-
-    // Estimate where the remote player should be now.
-    const ageSec = (Date.now() - state.lastRemoteTimestamp) / 1000;
-    const estimatedRemote = state.lastRemoteTime + Math.min(ageSec, 10);
-    const diff = player.currentTime - estimatedRemote;
-
-    // Only correct if we've drifted meaningfully but not so much that
-    // an event-driven correction should have already fired.
-    if (Math.abs(diff) < 0.3) {
-      // Close enough — ensure speed is normal.
-      if (state.speedChanged) {
-        resetPlaybackRate(player);
-      }
-      return;
-    }
-
-    if (diff > REWIND_THRESHOLD || diff < -FASTFORWARD_THRESHOLD) {
-      // Large drift — don't silently correct here; wait for an event or
-      // the next sync-state. Just reset speed so we don't compound the issue.
-      resetPlaybackRate(player);
-      return;
-    }
-
-    // Gentle slowdown / speedup for minor drift.
-    if (diff > SLOWDOWN_KICKIN_THRESHOLD && !state.speedChanged) {
-      player.playbackRate = SLOWDOWN_RATE;
-      state.speedChanged = true;
-    } else if (state.speedChanged && Math.abs(diff) < SLOWDOWN_RESET_THRESHOLD) {
-      resetPlaybackRate(player);
-    }
-  }, SYNC_POLL_INTERVAL_MS);
-}
-
-function stopSyncPolling() {
-  clearInterval(state.syncPollTimer);
-  state.syncPollTimer = null;
-}
-
-async function ensurePlaybackStarted(player) {
-  if (!player) {
     return;
   }
-
-  try {
-    await player.play();
-  } catch {
-    // Autoplay blocked — forceResumePlayback will retry or arm the
-    // user-gesture unlock. Don't mute; it's impossible to unmute
-    // programmatically afterwards.
+  const shouldPlay = !timeline.paused && !timeline.buffering;
+  state.playbackIntentPlaying = !timeline.paused;
+  const target = clampSeekTime(player, timelinePosition());
+  player.setPlaybackIntent?.(shouldPlay, target, timeline.rate);
+  if (state.pendingAutoResume && shouldPlay) return;
+  const error = target - player.currentTime;
+  const canCorrect = forceSeek || !shouldPlay || player.readyState >= 3;
+  // A costly seek must not immediately trigger another seek to chase its own loading delay.
+  const hardDrift = Math.max(2.5, state.seekCost * 2 + 0.5);
+  if (canCorrect && !state.remoteSeek && !player.seeking && (((forceSeek || !shouldPlay) && Math.abs(error) > 0.15) || Math.abs(error) > hardDrift)) {
+    resetPlaybackRate(player);
+    state.remoteSeek = { target, startedAt: performance.now() };
+    seekCrunchyrollPlayer(player, target);
   }
-}
-
-function forceResumePlayback(player, targetTime) {
-  clearTimeout(state.forcePlayTimer);
-
-  let attempt = 0;
-  const maxAttempts = 20;
-
-  const tick = () => {
-    if (!player) {
-      return;
-    }
-
-    const hasFutureData = player.readyState >= HAVE_FUTURE_DATA;
-    if (!player.paused && hasFutureData) {
-      state.pendingAutoResume = false;
-      state.pendingTargetTime = null;
-      state.unlockNoticeShown = false;
-      return;
-    }
-
-    if (!player.paused && !hasFutureData) {
+  if (!shouldPlay) {
+    cancelPlaybackAttempt();
+    resetPlaybackRate(player);
+    if (!player.paused) {
+      state.expectedPause = true;
       player.pause();
     }
+    if (!state.remoteSeek) state.restoringPlayer = false;
+    return;
+  }
+  if (state.remoteSeek || player.seeking) return;
+  if (player.paused) {
+    if (!state.playAttempt && !state.pendingAutoResume) forceResumePlayback(player);
+  } else if (player.readyState >= 3) {
+    const correction = Math.abs(error) > 0.25 ? (error > 0 ? 1.03 : 0.97) : 1;
+    setPlaybackRate(player, state.baseRate * correction);
+  }
+  state.restoringPlayer = false;
+}
 
-    ensurePlaybackStarted(player).catch(() => {});
-    attempt += 1;
+function clampSeekTime(player, target) {
+  return Math.max(0, Math.min(target, Number.isFinite(player.duration) ? Math.max(0, player.duration - 0.05) : target));
+}
 
-    const stillNeedsKick = player.paused || player.readyState < HAVE_FUTURE_DATA;
-    if (attempt < maxAttempts && stillNeedsKick) {
-      state.forcePlayTimer = setTimeout(tick, FORCE_PLAY_RETRY_MS);
-    } else if (stillNeedsKick) {
+function setPlaybackRate(player, rate) {
+  state.appliedRate = rate;
+  if (Math.abs(player.playbackRate - rate) > 0.001) player.playbackRate = rate;
+}
+
+function resetPlaybackRate(player = state.player) {
+  if (player) setPlaybackRate(player, state.baseRate || 1);
+}
+
+function cancelPlaybackAttempt() {
+  state.playGeneration++;
+  state.playAttempt = false;
+  state.pendingAutoResume = false;
+  if (ui?.resumeButton) ui.resumeButton.hidden = true;
+}
+
+function forceResumePlayback(player) {
+  if (!player || !state.playbackIntentPlaying) return;
+  const generation = state.playGeneration;
+  state.playAttempt = true;
+  state.expectedPlay = player.paused;
+  let result;
+  try { result = player.play(); } catch (error) { result = Promise.reject(error); }
+  Promise.resolve(result).then(() => {
+    if (generation !== state.playGeneration) return;
+    state.playAttempt = false;
+    state.pendingAutoResume = false;
+    if (ui?.resumeButton) ui.resumeButton.hidden = true;
+  }).catch((error) => {
+    if (generation !== state.playGeneration) return;
+    state.playAttempt = false;
+    state.expectedPlay = false;
+    if (error.name === "NotAllowedError") {
       state.pendingAutoResume = true;
-      state.pendingTargetTime = Number.isFinite(targetTime) ? targetTime : null;
-      if (!state.unlockNoticeShown) {
-        addLog("Remote play is blocked by browser policy. Click anywhere once to enable sync playback.", "system");
-        state.unlockNoticeShown = true;
-      }
+      if (ui?.resumeButton) ui.resumeButton.hidden = false;
+      addLog("Browser blocked remote playback. Click Enable playback in WatchParty.", "system");
     }
-  };
-
-  state.forcePlayTimer = setTimeout(tick, FORCE_PLAY_INITIAL_MS);
+    // AbortError is normal during a seek. canplay/polling retries without
+    // pausing the player or seeking back to an obsolete retry target.
+  });
 }
 
 function setupAutoResumeUnlock() {
-  const tryUnlock = () => {
-    if (!state.pendingAutoResume) {
+  ui.resumeButton?.addEventListener("click", () => {
+    if (!state.pendingAutoResume || !state.playbackIntentPlaying) return;
+    if (state.player?.showUnlock) {
+      state.player.showUnlock();
+      addLog("Click Enable WatchParty playback on the video itself to allow audio.", "system");
       return;
     }
+    state.pendingAutoResume = false;
+    reconcilePlayer(true);
+    if (state.player?.paused && !state.remoteSeek) forceResumePlayback(state.player);
+  });
+}
 
-    const player = getPlayer();
-    if (!player) {
-      return;
-    }
+function updatePageContext() {
+  const pageKey = normalizePageKey(location.href);
+  if (pageKey === state.pageKey) return;
+  resetSyncState();
+  state.awaitingPageMedia = Boolean(state.player);
+  state.playerReadySent = false;
+  state.pageKey = pageKey;
+  if (state.connected) sendMessage({ type: "page", pageKey });
+}
 
-    const target = state.pendingTargetTime;
-    if (Number.isFinite(target) && Math.abs(player.currentTime - target) > 1.5) {
-      player.currentTime = target;
-    }
-
-    ensurePlaybackStarted(player)
-      .then(() => {
-        state.pendingAutoResume = false;
-        state.pendingTargetTime = null;
-        if (state.unlockNoticeShown) {
-          addLog("Sync playback enabled on this tab.", "system");
-        }
-        state.unlockNoticeShown = false;
-      })
-      .catch(() => {
-        return;
-      });
-  };
-
-  window.addEventListener("pointerdown", tryUnlock, true);
-  window.addEventListener("keydown", tryUnlock, true);
+function resetSyncState() {
+  cancelPlaybackAttempt();
+  state.player?.setPlaybackIntent?.(false);
+  clearTimeout(state.pendingSeekTimer);
+  state.pendingSeekTimer = null;
+  resetPlaybackRate();
+  state.timeline = null;
+  state.initialSyncPending = false;
+  state.lastRevision = 0;
+  state.controllerId = null;
+  state.pendingCommandId = 0;
+  state.remoteSeek = null;
+  state.localSeeking = false;
+  state.clockOffset = null;
+  state.roundTrip = 0;
+  state.lastReportAt = -Infinity;
+  state.seekCost = 0;
 }

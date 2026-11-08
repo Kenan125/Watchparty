@@ -35,6 +35,7 @@ function buildUi() {
       <button id="wp-tab-btn-settings" class="wp-tab-btn" type="button">Settings</button>
     </div>
     <section id="wp-tab-chat" class="wp-tab wp-active">
+      <button id="wp-enable-playback" type="button" class="wp-action-btn" hidden>Enable playback</button>
       <div id="wp-log"></div>
       <div id="wp-chat"></div>
       <form id="wp-chat-form">
@@ -80,6 +81,7 @@ function buildUi() {
     launcher,
     root,
     connection: root.querySelector("#wp-connection"),
+    resumeButton: root.querySelector("#wp-enable-playback"),
     userCount: root.querySelector("#wp-user-count"),
     roomText: root.querySelector("#wp-settings-room"),
     chatTabBtn: root.querySelector("#wp-tab-btn-chat"),

@@ -117,7 +117,11 @@ async function sendToContent(message) {
   }
 
   try {
-    await chrome.tabs.sendMessage(tab.id, message);
+    const response = await chrome.tabs.sendMessage(tab.id, message);
+    if (!response?.ok) {
+      setStatus("Page rejected the request. Refresh Crunchyroll and try again.", "err");
+      return false;
+    }
   } catch {
     setStatus("Could not reach page script. Refresh Crunchyroll tab.", "err");
     return false;
@@ -148,13 +152,13 @@ async function createRoomFromFields() {
 
   const tab = await getActiveCrunchyrollTab();
   els.inviteCode.value = toInviteLink(room, tab?.url);
-  setRelay(true, 1);
+  setRelay(false);
 
   try {
     await navigator.clipboard.writeText(els.inviteCode.value);
-    setStatus("Room created. Invite link copied.", "ok");
+    setStatus("Connecting to room. Invite link copied.", "ok");
   } catch {
-    setStatus("Room created. Copy invite link manually.", "ok");
+    setStatus("Connecting to room. Copy invite link manually.", "ok");
   }
 
   setTimeout(() => {
