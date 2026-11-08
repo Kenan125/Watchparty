@@ -14,6 +14,7 @@ function startPlayerPolling() {
     updatePageContext();
     attachPlayerListeners();
     notifyPlayerReady();
+    settleLocalSeekIntent();
     if (state.connected) {
       if (state.controllerId === state.clientId) publishSnapshot();
       else reconcilePlayer(false);
@@ -29,6 +30,9 @@ function attachPlayerListeners() {
   state.player = player;
   state.remoteSeek = null;
   state.localSeeking = false;
+  state.localSeekIntent = null;
+  clearTimeout(state.pendingSeekTimer);
+  state.pendingSeekTimer = null;
   state.expectedPlay = false;
   state.expectedPause = false;
   state.playerReadySent = false;
@@ -41,6 +45,7 @@ function attachPlayerListeners() {
   const on = (type, fn) => player.addEventListener(type, fn, { signal: state.playerAbort.signal });
 
   on("seeking", () => {
+    if (state.localSeekIntent) return;
     if (state.remoteSeek && Math.abs(player.currentTime - state.remoteSeek.target) < 0.5) return;
     state.remoteSeek = null;
     state.localSeeking = true;
@@ -48,6 +53,10 @@ function attachPlayerListeners() {
     clearTimeout(state.pendingSeekTimer);
   });
   on("seeked", () => {
+    if (state.localSeekIntent) {
+      settleLocalSeekIntent();
+      return;
+    }
     if (state.remoteSeek && Math.abs(player.currentTime - state.remoteSeek.target) < 0.5) {
       if (Number.isFinite(state.remoteSeek.startedAt)) state.seekCost = (performance.now() - state.remoteSeek.startedAt) / 1000;
       state.remoteSeek = null;
@@ -68,7 +77,7 @@ function attachPlayerListeners() {
       state.expectedPlay = false;
       return;
     }
-    if (state.restoringPlayer) return;
+    if (state.restoringPlayer || state.localSeekIntent) return;
     if (state.playbackIntentPlaying && state.timeline && !state.timeline.paused && !state.localSeeking) {
       state.pendingAutoResume = false;
       if (ui?.resumeButton) ui.resumeButton.hidden = true;
@@ -83,7 +92,7 @@ function attachPlayerListeners() {
       return;
     }
     if (state.restoringPlayer) return;
-    if (state.remoteSeek) return;
+    if (state.remoteSeek || state.localSeekIntent) return;
     state.playbackIntentPlaying = false;
     if (player.seeking || state.localSeeking) return;
     broadcastControl("pause");
@@ -119,10 +128,54 @@ function attachPlayerListeners() {
   else if (state.connected) publishSnapshot(true);
 }
 
-function broadcastControl(action) {
+function handleLocalPlayerControl(action, time, settledPause = false) {
+  updatePageContext();
+  const player = state.player;
+  if (!state.connected || !player || state.awaitingPageMedia || state.initialSyncPending) return;
+  // Scrubbing can call pause before seek; do not turn that into a party pause.
+  if (action === "pause" && !settledPause) {
+    if (state.localSeekIntent) return;
+    state.expectedPause = !player.paused;
+    clearTimeout(state.pendingSeekTimer);
+    state.pendingSeekTimer = setTimeout(() => handleLocalPlayerControl(action, time, true), 450);
+    return;
+  }
+  cancelPlaybackAttempt();
+  state.remoteSeek = null;
+  if (action === "seek") {
+    state.localSeeking = true;
+    state.localSeekIntent = { time: clampSeekTime(player, time), paused: !state.playbackIntentPlaying,
+      expiresAt: performance.now() + 10000, sent: false };
+  } else {
+    state.playbackIntentPlaying = action === "play";
+    if (action === "play") state.expectedPlay = player.paused;
+    else state.expectedPause = !player.paused;
+    if (state.localSeekIntent) state.localSeekIntent.paused = action === "pause";
+  }
+  const intent = state.localSeekIntent;
+  clearTimeout(state.pendingSeekTimer);
+  state.pendingSeekTimer = setTimeout(() => {
+    state.pendingSeekTimer = null;
+    broadcastControl(action, intent);
+    if (intent) intent.sent = true;
+    settleLocalSeekIntent();
+  }, 50);
+}
+
+function settleLocalSeekIntent() {
+  const intent = state.localSeekIntent;
+  const player = state.player;
+  if (!intent?.sent || !player) return;
+  if ((!player.seeking && Math.abs(player.currentTime - intent.time) < 0.5) || performance.now() >= intent.expiresAt) {
+    state.localSeekIntent = null;
+    state.localSeeking = player.seeking;
+  }
+}
+
+function broadcastControl(action, seekIntent = null) {
   const player = state.player;
   updatePageContext();
-  if (!state.connected || !player || player.readyState < 1 || player.seeking || state.awaitingPageMedia || state.initialSyncPending) return;
+  if (!state.connected || !player || (!seekIntent && (player.readyState < 1 || player.seeking)) || state.awaitingPageMedia || state.initialSyncPending) return;
   state.restoringPlayer = false;
   cancelPlaybackAttempt();
   clearTimeout(state.pendingSeekTimer);
@@ -131,12 +184,15 @@ function broadcastControl(action) {
   resetPlaybackRate(player);
   const commandId = ++state.commandId;
   state.pendingCommandId = commandId;
-  if (!sendMessage({ type: "control", action, commandId, ...playerSnapshot() })) {
+  const snapshot = playerSnapshot();
+  // Broadcast the requested destination, not the old native time during loading.
+  if (seekIntent) Object.assign(snapshot, { time: seekIntent.time, paused: seekIntent.paused, buffering: false });
+  if (!sendMessage({ type: "control", action, commandId, ...snapshot })) {
     state.pendingCommandId = 0;
     state.ws?.close();
     return;
   }
-  addLog(`${state.username}: ${action} at ${formatVideoTime(player.currentTime)}.`, "system");
+  addLog(`${state.username}: ${action} at ${formatVideoTime(snapshot.time)}.`, "system");
 }
 
 function playerSnapshot() {
@@ -332,6 +388,7 @@ function resetSyncState() {
   state.pendingCommandId = 0;
   state.remoteSeek = null;
   state.localSeeking = false;
+  state.localSeekIntent = null;
   state.clockOffset = null;
   state.roundTrip = 0;
   state.lastReportAt = -Infinity;

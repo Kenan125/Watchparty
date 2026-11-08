@@ -117,6 +117,10 @@ function setupPlayerBridge() {
     } else if (data.type === "gone") {
       framePlayer = null;
       attachPlayerListeners();
+    } else if (data.type === "local-control" && framePlayer && data.videoId === framePlayer.videoId &&
+        data.appliedCommandId >= framePlayer.lastMutationId && ["play", "pause", "seek"].includes(data.action) &&
+        Number.isFinite(data.time) && data.time >= 0) {
+      handleLocalPlayerControl(data.action, data.time);
     } else if (data.type === "unlocking" && Number.isFinite(data.target)) {
       state.remoteSeek = data.seeking ? { target: data.target, startedAt: performance.now() } : null;
       state.expectedPlay = true;

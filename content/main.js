@@ -1,5 +1,6 @@
 ui = buildUi();
 setupPlayerBridge();
+setupLocalSeekListener(handleLocalPlayerControl);
 setupAutoResumeUnlock();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
