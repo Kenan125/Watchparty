@@ -3,6 +3,9 @@ const partyPanelPorts = new Set();
 
 function buildSidePanelHost() {
   partyUiOptions = { hosted: true, sidePanel: true };
+  // Remove the old in-page shortcut when upgrading to the native panel.
+  document.getElementById("wp-launcher")?.remove();
+  document.getElementById("wp-launcher-slot")?.remove();
   // Detached compatibility references for the existing playback/room controllers.
   const refs = { root: document.createElement("section"), launcher: document.createElement("button"),
     settingsName: document.createElement("input"), roomText: document.createElement("span"),

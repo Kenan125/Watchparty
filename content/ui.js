@@ -124,32 +124,8 @@ function mountRoot(root) {
 }
 
 function attachLauncherToHeader(launcher) {
-  if (partyUiOptions.embedded) {
-    const host = getPartyPlayerHost() || document.documentElement;
-    attachPartyPlayerLauncher(launcher, host);
-    return;
-  }
-  const headerActions = document.querySelector(".header-actions");
-  if (!headerActions) {
-    launcher.classList.add("wp-launcher-floating");
-    launcher.classList.remove("wp-launcher-in-header");
-    if (launcher.parentElement !== document.body) {
-      document.body.appendChild(launcher);
-    }
-    return;
-  }
-
-  const searchTile = headerActions.querySelector('a[href="/search"]');
-  const searchItem = searchTile ? searchTile.closest(".nav-horizontal-layout__action-item--KZBne") : null;
-  if (launcher.parentElement !== headerActions) {
-    if (searchItem && searchItem.parentNode === headerActions) {
-      headerActions.insertBefore(launcher, searchItem);
-    } else {
-      headerActions.prepend(launcher);
-    }
-  }
-  launcher.classList.add("wp-launcher-in-header");
-  launcher.classList.remove("wp-launcher-floating");
+  // The browser toolbar is the only chat entry point in the side-panel build.
+  launcher.remove();
 }
 
 function switchTab(tabName) {
