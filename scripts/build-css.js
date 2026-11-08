@@ -13,7 +13,7 @@ function namespaceCss(css) {
 }
 
 function buildCss(target, watch = false) {
-  if (!["popup", "content", "host"].includes(target)) throw new Error("Unknown CSS target");
+  if (!["content", "host"].includes(target)) throw new Error("Unknown CSS target");
   const directory = path.join(root, "build/css");
   const raw = path.join(directory, `${target}.css`);
   fs.mkdirSync(directory, { recursive: true });
@@ -44,6 +44,6 @@ function buildCss(target, watch = false) {
 
 if (require.main === module) {
   const target = process.argv[2];
-  for (const name of target ? [target] : ["popup", "content", "host"]) buildCss(name, process.argv.includes("--watch"));
+  for (const name of target ? [target] : ["content", "host"]) buildCss(name, process.argv.includes("--watch"));
 }
 module.exports = { namespaceCss, buildCss };

@@ -1,74 +1,40 @@
-# Chrome Web Store Submission Guide
+# Chrome Web Store submission
 
-This project is ready for Chrome Web Store submission.
+## Build the upload
 
-## 1) Upload Package
+Run `npm run package:extension`, then ZIP the **contents** of `build/extension`
+with `manifest.json` at the archive root. Do not upload the repository or reuse an
+old ZIP. This checklist is not a claim of store approval or live-service verification.
 
-Upload this file to the Developer Dashboard:
+## Listing
 
-- [watchparty-chrome-store.zip](watchparty-chrome-store.zip)
-
-## 2) Required Store Listing Fields
-
-Use these suggested values and adjust as you like.
-
-- Name: Crunchyroll WatchParty
-- Short description: Watch Crunchyroll together with synced playback, chat, and room events.
+- Name: WatchParty — Watch together
+- Description: Synchronized playback, room invites, and Side Panel chat. Currently supports Crunchyroll.
 - Category: Social Communication
-- Language: English
+- Browser requirement: Chrome 116+ / compatible Side Panel API.
 
-## 3) Permission Justifications
+The toolbar opens the native Side Panel. There is no popup, header icon, or player
+chat overlay. Everyone uses their own streaming account and episode access.
 
-### `storage`
+## Permission justifications
 
-Used to save user settings locally:
+- `storage`: persist only display name (`wpUsername`) and theme (`wpTheme`).
+- `tabs`: identify the active tab in the panel's window and connect the panel to
+  that tab's content script. Do not claim browsing-history collection.
+- `sidePanel`: show chat, room actions, invites, name, and theme in browser UI.
+- `https://www.crunchyroll.com/*` and `https://beta.crunchyroll.com/*`: episode
+  identity, invite handling, and playback synchronization.
+- `https://static.crunchyroll.com/*`: embedded Vilos player access. It forwards
+  media commands/state only and never opens a separate room connection.
 
-- relay server URL
-- username
-- room code
-- optional room password
+## Before submission
 
-### `tabs`
+1. Check manifest/package versions and package assets.
+2. Require matching production relay protocol at `/health` and production `wss://`.
+3. Check GitHub CI and manually verify supported-service playback and autoplay.
+4. Publish [PRIVACY_POLICY.md](PRIVACY_POLICY.md) at an accessible URL and supply a real support contact.
+5. Use screenshots of the Side Panel's Chat/Room views and real synchronized clients.
+   Do not use retired popup/overlay screenshots or claim fullscreen chat.
+6. Explain the Side Panel permission addition for review, then upload the new archive.
 
-Used to message the active Crunchyroll tab when user clicks Connect/Disconnect from the extension popup.
-
-### Host permissions
-
-The extension only injects on:
-
-- `https://www.crunchyroll.com/*`
-- `https://beta.crunchyroll.com/*`
-
-Reason: watch party controls and chat overlay are only needed on Crunchyroll video pages.
-
-## 4) Privacy Disclosure
-
-Use this document as your privacy policy content:
-
-- [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
-
-Host it on a public URL (GitHub Pages is fine) and paste that URL into the Web Store listing.
-
-## 5) Screenshots You Should Upload
-
-Take at least 3 screenshots:
-
-1. Popup with server URL, username, room, and invite code.
-2. In-page WatchParty overlay showing chat and logs.
-3. Two clients synced at same timestamp.
-
-## 6) Final Checklist Before Submit
-
-1. Confirm [manifest.json](manifest.json) version is correct.
-2. Confirm [watchparty-chrome-store.zip](watchparty-chrome-store.zip) includes extension files only.
-3. Confirm relay URL uses `wss://` in production.
-4. Confirm privacy policy URL is public and accessible.
-5. Submit for review.
-
-## 7) Updating Later
-
-For updates:
-
-1. Bump `version` in [manifest.json](manifest.json).
-2. Rebuild [watchparty-chrome-store.zip](watchparty-chrome-store.zip).
-3. Upload new package in Developer Dashboard.
+For updates, bump manifest/package/lockfile versions together and rebuild.

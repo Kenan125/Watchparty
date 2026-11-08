@@ -1,10 +1,9 @@
 {
   "name": "crunchyroll-watchparty",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "private": true,
   "scripts": {
     "build:css": "node scripts/build-css.js",
-    "watch:css:popup": "node scripts/build-css.js popup --watch",
     "watch:css:content": "node scripts/build-css.js content --watch",
     "watch:css:host": "node scripts/build-css.js host --watch",
     "check": "node scripts/check.js",

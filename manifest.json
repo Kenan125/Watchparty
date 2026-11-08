@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WatchParty — Watch together",
   "description": "Your people, the same moment. Synced playback, room invites, and side-panel chat. Currently supports Crunchyroll.",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -35,10 +35,7 @@
         "content/shared.js",
         "content/player-controls.js",
         "content/player-bridge.js",
-        "content/ui-view.js",
-        "content/ui-host.js",
         "content/side-panel.js",
-        "content/ui.js",
         "content/network.js",
         "content/player-sync.js",
         "content/invite.js",
@@ -48,7 +45,7 @@
     },
     {
       "matches": ["https://static.crunchyroll.com/vilos-v2/*"],
-      "js": ["content/shared.js", "content/player-controls.js", "content/ui-view.js", "content/ui-host.js", "content/player-frame.js"],
+      "js": ["content/player-controls.js", "content/player-unlock.js", "content/player-frame.js"],
       "all_frames": true,
       "run_at": "document_idle"
     }

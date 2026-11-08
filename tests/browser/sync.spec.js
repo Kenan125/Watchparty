@@ -43,10 +43,14 @@ async function partyPage(context, name, room) {
   await page.goto(`${origin}/watch/EP1/episode`);
   await page.waitForFunction(() => document.querySelector("video").readyState >= 3);
   await page.evaluate(() => {
-    window.chrome = { runtime: { onMessage: { addListener() {} } }, storage: { local: { get: async () => ({}), set: async () => {} } } };
+    const event = () => ({ addListener() {} });
+    window.chrome = { runtime: { onMessage: event(), onConnect: event() },
+      storage: { onChanged: event(), local: { get: async () => ({}), set: async () => {} } } };
   });
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
-  for (const script of manifest.content_scripts[0].js) await page.addScriptTag({ path: path.join(root, script) });
+  const mainHooks = manifest.content_scripts.find((entry) => entry.world === "MAIN");
+  const topContent = manifest.content_scripts.find((entry) => entry.js.includes("content/main.js"));
+  for (const script of [...mainHooks.js, ...topContent.js]) await page.addScriptTag({ path: path.join(root, script) });
   await page.evaluate(({ serverUrl, username, room }) => connect({ serverUrl, username, room }), { serverUrl: relay.url, username: name, room });
   await page.waitForFunction(() => state.connected && state.timeline);
   return page;

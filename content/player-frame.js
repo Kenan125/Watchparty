@@ -34,7 +34,7 @@
   function showUnlock() {
     if (!blocked || !playIntent) return;
     if (!unlockButton) {
-      unlockButton = createPartyLauncher("wp-player-unlock", "Enable WatchParty playback", true);
+      unlockButton = createPlaybackUnlock();
       unlockButton.addEventListener("click", () => {
         if (!playIntent || !player) return;
         const time = target ? target.time + Math.max(0, performance.now() - target.receivedAt) / 1000 * target.rate : player.currentTime;

@@ -80,7 +80,7 @@ function attachPlayerListeners() {
     if (state.restoringPlayer || state.localSeekIntent) return;
     if (state.playbackIntentPlaying && state.timeline && !state.timeline.paused && !state.localSeeking) {
       state.pendingAutoResume = false;
-      if (ui?.resumeButton) ui.resumeButton.hidden = true;
+      setResumeAvailable(false);
       return;
     }
     state.playbackIntentPlaying = true;
@@ -243,7 +243,7 @@ function applySyncSnapshot(data) {
     const blocked = state.pendingAutoResume && !data.paused && !data.buffering;
     cancelPlaybackAttempt();
     state.pendingAutoResume = blocked;
-    if (ui?.resumeButton) ui.resumeButton.hidden = !blocked;
+    setResumeAvailable(blocked);
   }
   reconcilePlayer(data.cause !== "report");
 }
@@ -322,7 +322,7 @@ function cancelPlaybackAttempt() {
   state.playGeneration++;
   state.playAttempt = false;
   state.pendingAutoResume = false;
-  if (ui?.resumeButton) ui.resumeButton.hidden = true;
+  setResumeAvailable(false);
 }
 
 function forceResumePlayback(player) {
@@ -336,14 +336,14 @@ function forceResumePlayback(player) {
     if (generation !== state.playGeneration) return;
     state.playAttempt = false;
     state.pendingAutoResume = false;
-    if (ui?.resumeButton) ui.resumeButton.hidden = true;
+    setResumeAvailable(false);
   }).catch((error) => {
     if (generation !== state.playGeneration) return;
     state.playAttempt = false;
     state.expectedPlay = false;
     if (error.name === "NotAllowedError") {
       state.pendingAutoResume = true;
-      if (ui?.resumeButton) ui.resumeButton.hidden = false;
+      setResumeAvailable(true);
       addLog("Browser blocked remote playback. Click Enable playback in WatchParty.", "system");
     }
     // AbortError is normal during a seek. canplay/polling retries without
@@ -351,18 +351,16 @@ function forceResumePlayback(player) {
   });
 }
 
-function setupAutoResumeUnlock() {
-  ui.resumeButton?.addEventListener("click", () => {
-    if (!state.pendingAutoResume || !state.playbackIntentPlaying) return;
-    if (state.player?.showUnlock) {
-      state.player.showUnlock();
-      addLog("Click Enable WatchParty playback on the video itself to allow audio.", "system");
-      return;
-    }
-    state.pendingAutoResume = false;
-    reconcilePlayer(true);
-    if (state.player?.paused && !state.remoteSeek) forceResumePlayback(state.player);
-  });
+function resumePlayback() {
+  if (!state.pendingAutoResume || !state.playbackIntentPlaying) return;
+  if (state.player?.showUnlock) {
+    state.player.showUnlock();
+    addLog("Click Enable WatchParty playback on the video itself to allow audio.", "system");
+    return;
+  }
+  state.pendingAutoResume = false;
+  reconcilePlayer(true);
+  if (state.player?.paused && !state.remoteSeek) forceResumePlayback(state.player);
 }
 
 function updatePageContext() {

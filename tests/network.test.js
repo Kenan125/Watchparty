@@ -19,19 +19,18 @@ test("a player mounted after the connection announces readiness", () => {
   assert.equal(h.sent.filter((m) => m.type === "ready").length, 1);
 });
 
-test("popup commands receive an explicit acknowledgement from the page script", () => {
+test("status diagnostics report the page script's current room state", () => {
   const fs = require("node:fs");
   const path = require("node:path");
   const { root } = require("./helpers/player-harness");
   const h = createHarness();
   let listener;
-  h.context.chrome.runtime = { onMessage: { addListener: (fn) => { listener = fn; } } };
-  h.context.buildUi = () => h.context.testUi;
+  h.context.chrome.runtime.onMessage = { addListener: (fn) => { listener = fn; } };
   h.context.autoConnectFromInviteLink = async () => {};
   h.run(fs.readFileSync(path.join(root, "content/main.js"), "utf8"));
   let response;
-  listener({ type: "WP_CONNECT", payload: {} }, {}, (value) => { response = value; });
-  assert.equal(response?.ok, false);
+  listener({ type: "WP_STATUS_REQUEST" }, {}, (value) => { response = value; });
+  assert.deepEqual({ ...response }, { connected: true, room: "test", username: "Alice", userCount: 0 });
 });
 
 test("SPA episode navigation does not seed the new episode with the old video's position", () => {
@@ -58,7 +57,7 @@ test("socket open is not online, and an obsolete relay gets a handshake error", 
   await h.advance(5100);
   assert.equal(h.state().connected, false);
   assert.equal(h.state().ws, null);
-  assert.ok(h.logs.some(([line]) => line.includes("protocol 2")));
+  assert.ok(h.run('partyHistory.some((entry) => entry.kind === "log" && entry.text.includes("protocol 2"))'));
 });
 
 test("reconnect backoff grows and callbacks from old sockets cannot reconnect them", async () => {

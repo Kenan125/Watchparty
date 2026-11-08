@@ -1,21 +1,9 @@
-ui = buildSidePanelHost();
+setupSidePanel();
 setupPlayerBridge();
 setupLocalSeekListener(handleLocalPlayerControl);
-setupAutoResumeUnlock();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || !message.type) {
-    return;
-  }
-
-  if (message.type === "WP_CONNECT") {
-    sendResponse({ ok: connect(message.payload) });
-    return;
-  }
-
-  if (message.type === "WP_DISCONNECT") {
-    disconnect(true);
-    sendResponse({ ok: true });
     return;
   }
 

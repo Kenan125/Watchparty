@@ -42,6 +42,7 @@ const state = {
   localSeekIntent: null,
 
   pendingAutoResume: false,
+  resumeAvailable: false,
   reconnectTimer: null,
   reconnectAttempts: 0,
   wsAbort: null,
@@ -75,5 +76,3 @@ const state = {
   bestRoundTrip: Infinity,
   lastReportAt: -Infinity
 };
-
-let ui = null;

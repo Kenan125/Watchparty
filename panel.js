@@ -6,7 +6,7 @@
   let generation = 0;
   let inviteUrl = "";
   async function send(action, payload = {}) {
-    if (action === "open") { if (!payload.open) window.close(); return; }
+
     if (action === "copy") {
       if (!inviteUrl) { addLog("Create or join a room first.", "system"); return; }
       try { await navigator.clipboard.writeText(inviteUrl); addLog("Invite link copied.", "system"); }
@@ -17,11 +17,11 @@
     try { port.postMessage({ action, payload }); }
     catch { unavailable("Refresh the Crunchyroll tab to reconnect."); }
   }
-  ui = buildUi({ panel: true, embedded: true, sidePanel: true, send });
+  ui = buildUi(send);
   ui.resumeButton.addEventListener("click", () => send("resume"));
   function unavailable(status) {
     inviteUrl = "";
-    applyPartyView({ open: true, connected: false, username: "", room: "", count: 0,
+    applyPartyView({ connected: false, username: "", room: "", count: 0,
       theme: partyTheme, status, history: [], resume: false });
     ui.root.querySelector("#wp-create-room").disabled = true;
     ui.root.querySelector("#wp-empty p").textContent = status;
@@ -34,6 +34,7 @@
     old?.disconnect();
     tabId = null;
     ui.input.value = "";
+    ui.settingsName.value = "";
     unavailable("Open a Crunchyroll episode tab to start.");
     const [tab] = await chrome.tabs.query({ active: true, windowId });
     if (request !== generation) return;

@@ -3,36 +3,24 @@
 @import "tailwindcss/theme.css" layer(theme) prefix(wp);
 @import "tailwindcss/utilities.css" layer(utilities) prefix(wp) source(none);
 @import "./foundation.css";
-@source "../content/**/*.js";
+@source "../content/ui.js";
+@source "../content/ui-view.js";
+@source "../panel.js";
 @source "../panel.html";
 
 .wp-panel-document, .wp-panel-document body { @apply wp:m-0 wp:h-full wp:w-full wp:overflow-hidden wp:bg-transparent; }
-.wp-panel-document #wp-root { @apply wp:fixed wp:inset-0 wp:h-full wp:max-h-none wp:w-full wp:translate-x-0 wp:rounded-none wp:border-0 wp:shadow-none; }
-
-#wp-root, #wp-root *, #wp-launcher, #wp-player-unlock { @apply wp:box-border; }
-#wp-root { @apply wp:invisible wp:pointer-events-none wp:fixed wp:top-[72px] wp:right-[16px] wp:z-[2147483646] wp:flex wp:h-[min(680px,calc(100dvh-88px))] wp:max-h-full wp:w-[min(352px,calc(100vw-24px))] wp:translate-x-[16px] wp:flex-col wp:overflow-hidden wp:rounded-[18px] wp:border wp:border-solid wp:border-line wp:bg-ink wp:font-sans wp:text-[13px] wp:leading-normal wp:text-paper wp:opacity-0 wp:shadow-2xl wp:transition-[opacity,translate] wp:duration-150 wp:scheme-dark wp:motion-reduce:transition-none wp:light:border-[#dce1ed] wp:light:bg-[#f7f8fc] wp:light:text-[#20283b] wp:light:scheme-light; }
-#wp-root.wp-open { @apply wp:visible wp:pointer-events-auto wp:translate-x-0 wp:opacity-100; }
-#wp-root.wp-player-proxy { @apply wp:hidden; }
-.wp-player-launcher { @apply wp:absolute wp:top-[12px] wp:right-[12px] wp:z-[2147483645] wp:flex wp:size-[42px] wp:items-center wp:justify-center wp:rounded-[12px] wp:border wp:border-solid wp:border-line wp:bg-ink/90 wp:p-0 wp:text-periwinkle; }
-.wp-player-launcher[hidden] { @apply wp:hidden!; }
-.wp-player-launcher .wp-mark { @apply wp:block wp:size-[25px]; }
-.wp-player-launcher:focus-visible { @apply wp:outline-2 wp:outline-offset-2 wp:outline-periwinkle; }
-#wp-root.wp-embedded { @apply wp:absolute wp:top-[12px] wp:bottom-[var(--wp-controls-clearance,96px)] wp:right-[12px] wp:h-auto wp:max-h-[calc(100%-24px)] wp:w-[min(328px,calc(100vw-24px))]; }
-#wp-root.wp-embedded.wp-player-fixed { @apply wp:fixed wp:top-[var(--wp-player-top)] wp:bottom-[var(--wp-player-bottom)] wp:right-[var(--wp-player-right)]; }
+#wp-root, #wp-root * { @apply wp:box-border; }
+#wp-root { @apply wp:fixed wp:inset-0 wp:flex wp:h-full wp:w-full wp:flex-col wp:overflow-hidden wp:border-0 wp:bg-ink wp:font-sans wp:text-[13px] wp:leading-normal wp:text-paper wp:scheme-dark wp:light:bg-[#f7f8fc] wp:light:text-[#20283b] wp:light:scheme-light; }
 #wp-root [hidden] { @apply wp:hidden; }
 #wp-root h2, #wp-root h3, #wp-root p { @apply wp:m-0; }
-#wp-root button, #wp-root input, #wp-player-unlock { @apply wp:font-sans wp:text-[13px] wp:leading-normal; }
-#wp-root button, #wp-launcher, #wp-player-unlock { @apply wp:cursor-pointer wp:transition-colors wp:disabled:cursor-not-allowed wp:disabled:opacity-40 wp:motion-reduce:transition-none; }
-#wp-root button:focus-visible, #wp-root input:focus-visible, #wp-root summary:focus-visible, #wp-launcher:focus-visible, #wp-player-unlock:focus-visible { @apply wp:outline-2 wp:outline-offset-2 wp:outline-periwinkle; }
-#wp-root button, #wp-launcher { @apply wp:touch-manipulation; }
+#wp-root button, #wp-root input { @apply wp:font-sans wp:text-[13px] wp:leading-normal; }
+#wp-root button { @apply wp:cursor-pointer wp:transition-colors wp:disabled:cursor-not-allowed wp:disabled:opacity-40 wp:motion-reduce:transition-none; }
+#wp-root button:focus-visible, #wp-root input:focus-visible, #wp-root summary:focus-visible { @apply wp:outline-2 wp:outline-offset-2 wp:outline-periwinkle; }
+#wp-root button { @apply wp:touch-manipulation; }
 #wp-root .wp-mark { @apply wp:block wp:size-[28px] wp:shrink-0 wp:text-periwinkle wp:light:text-[#5268b8]; }
-#wp-launcher .wp-mark { @apply wp:block wp:size-[25px]; }
+
 .wp-small-icon { @apply wp:block wp:size-[17px] wp:shrink-0; }
-#wp-launcher { @apply wp:inline-flex wp:size-[42px] wp:items-center wp:justify-center wp:rounded-[12px] wp:border-0 wp:bg-transparent wp:p-0 wp:text-[#d8e0ff] wp:hover:bg-[#a8b8ff]/15; }
-#wp-launcher.wp-launcher-active { @apply wp:bg-[#a8b8ff]/15 wp:text-periwinkle; }
-#wp-launcher.wp-launcher-floating { @apply wp:fixed wp:top-[76px] wp:right-[16px] wp:z-[2147483647] wp:border wp:border-solid wp:border-line wp:bg-ink wp:shadow-xl; }
-#wp-launcher.wp-launcher-in-player { @apply wp:relative wp:z-[2147483645] wp:ml-[8px] wp:shrink-0; }
-#wp-launcher.wp-launcher-player-floating { @apply wp:absolute wp:top-auto wp:bottom-[18px] wp:right-[18px] wp:z-[2147483645] wp:bg-ink/90; }
+
 #wp-header { @apply wp:flex wp:shrink-0 wp:items-center wp:justify-between wp:gap-[8px] wp:px-[18px] wp:pt-[18px] wp:pb-[16px]; }
 #wp-root .wp-brand { @apply wp:flex wp:min-w-0 wp:items-center wp:gap-[9px]; }
 #wp-root h2 { @apply wp:text-[15px] wp:font-bold wp:tracking-[-0.3px]; }
@@ -57,7 +45,7 @@
 #wp-root #wp-empty h3 { @apply wp:mb-[8px] wp:text-[21px] wp:font-semibold wp:tracking-[-0.6px]; }
 #wp-root #wp-empty p { @apply wp:mb-[20px] wp:text-[12px] wp:leading-[1.65] wp:text-muted wp:light:text-[#616c82]; }
 #wp-root .wp-empty-note { @apply wp:mt-[12px] wp:text-[9px] wp:text-muted wp:light:text-[#616c82]; }
-#wp-root .wp-action-btn, #wp-chat-send, #wp-player-unlock { @apply wp:rounded-[10px] wp:border-0 wp:bg-periwinkle wp:px-[14px] wp:py-[10px] wp:font-semibold wp:text-[#131d43] wp:hover:bg-[#bfcbff]; }
+#wp-root .wp-action-btn, #wp-chat-send { @apply wp:rounded-[10px] wp:border-0 wp:bg-periwinkle wp:px-[14px] wp:py-[10px] wp:font-semibold wp:text-[#131d43] wp:hover:bg-[#bfcbff]; }
 #wp-root .wp-action-btn { @apply wp:text-[12px]; }
 #wp-root .wp-activity { @apply wp:shrink-0 wp:border-x-0 wp:border-t wp:border-b-0 wp:border-solid wp:border-line wp:px-[18px] wp:py-[10px] wp:text-[10px] wp:text-muted wp:light:border-[#dce1ed] wp:light:text-[#616c82]; }
 #wp-root .wp-activity summary { @apply wp:cursor-pointer; }
@@ -88,10 +76,3 @@
 #wp-root .wp-leave-btn { @apply wp:rounded-[10px] wp:border-0 wp:bg-transparent wp:p-[8px] wp:text-[12px] wp:text-coral wp:hover:bg-coral/10 wp:light:text-[#a94723]; }
 #wp-root .wp-room-footer { @apply wp:mt-auto wp:grid wp:gap-[4px] wp:text-center wp:text-[9px] wp:text-muted wp:light:text-[#616c82]; }
 #wp-root .wp-sr-only { @apply wp:sr-only; }
-#wp-player-unlock { @apply wp:fixed wp:top-[20px] wp:left-[20px] wp:z-[2147483647] wp:shadow-xl; }
-@media (max-height: 480px) {
-  #wp-root.wp-embedded #wp-header { @apply wp:pt-[10px] wp:pb-[8px]; }
-  #wp-root.wp-embedded .wp-presence, #wp-root.wp-embedded .wp-composer-note, #wp-root.wp-embedded .wp-brand-caption { @apply wp:hidden; }
-  #wp-root.wp-embedded .wp-empty-art { @apply wp:hidden; }
-  #wp-root.wp-embedded #wp-empty { @apply wp:min-h-0; }
-}

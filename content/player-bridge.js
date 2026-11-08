@@ -80,7 +80,7 @@ function setupPlayerBridge() {
     }
     frameCalls.clear();
     framePlayer = null;
-    ui?.root?.classList.remove("wp-player-proxy");
+
     playerFrameSession = crypto.randomUUID();
     frameCommandId = 0;
     frameSequence = 0;
@@ -126,7 +126,7 @@ function setupPlayerBridge() {
       state.remoteSeek = data.seeking ? { target: data.target, startedAt: performance.now() } : null;
       state.expectedPlay = true;
       state.pendingAutoResume = false;
-      if (ui?.resumeButton) ui.resumeButton.hidden = true;
+      setResumeAvailable(false);
     } else if (data.type === "state" && data.media && Number.isFinite(data.media.time)) {
       if (!framePlayer || framePlayer.videoId !== data.videoId) {
         framePlayer = new FramePlayer(data.videoId, data.media);

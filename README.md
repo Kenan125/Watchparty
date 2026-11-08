@@ -33,7 +33,7 @@ WatchParty toolbar icon to open the Side Panel, create a room,
 and share its invite link. Each participant needs the extension and their own
 access to the same episode.
 
-The Room view identifies this build as **v2.0.4 · Experimental side panel**. After
+The Room view identifies this build as **v2.1.0 · Side panel**. After
 updating, reload the extension and fully refresh existing streaming tabs; SPA
 navigation does not remove CSS already injected by an older version.
 
@@ -46,19 +46,22 @@ The extension is plain JavaScript (Manifest V3), with Tailwind CSS and a Node.js
 WebSocket relay. The top page owns the room connection; the embedded player uses
 a validated message bridge for playback. Chat renders in a native extension
 Side Panel, connected to the active Crunchyroll tab through an extension port.
-Switching tabs shows that tab's room; closing the panel does not leave the room.
+Switching tabs shows that tab's room and clears the previous draft. Closing the panel
+does not leave the room. Use **Leave room** to disconnect; refreshing or closing the
+streaming tab also ends that connection. There is no popup, site-header shortcut, or
+player chat overlay.
 The page never receives our UI stylesheet. Only the frame-local autoplay-unlock
 button remains in the embedded player, with styles confined to Shadow DOM.
 
 - `npm run build:css` compiles `styles/` into the root stylesheets.
-- `npm run watch:css:popup` / `npm run watch:css:content` rebuild styles while editing.
-- `npm run watch:css:host` rebuilds only the isolated launcher/shell styles.
+- `npm run watch:css:content` rebuilds Side Panel styles while editing.
+- `npm run watch:css:host` rebuilds only the frame-local autoplay-unlock styles.
 - `npm run check` checks JavaScript syntax and manifest consistency.
 - `npm test` runs Node tests.
-- Existing overlay browser tests target the previous UI and are not acceptance tests for this experimental branch.
+- `npx playwright install chromium`, then `npm run test:browser`, checks native media and unpacked MV3 behavior with local fixtures.
 - `npm run verify` builds CSS and runs all checks; packaging also builds CSS automatically.
 
-Use Tailwind for styling. Do not edit generated `popup.css`, `content.css`, or `host.css`.
+Use Tailwind for styling. Do not edit generated `content.css` or `host.css`.
 The chat stylesheet loads only inside `panel.html`, not through content-script CSS
 injection. Preflight is disabled and Tailwind internals remain namespaced as defense
 in depth. WatchParty never resizes or restyles native video controls. Test new

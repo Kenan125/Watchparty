@@ -45,11 +45,11 @@ test("periodic reports do not retry policy-blocked autoplay; a later pause cance
   h.timeline({ revision: 2, time: 101 });
   await h.advance(10);
   assert.equal(h.player.playCalls, attempts, "wait for a user gesture instead of retrying on every report");
-  assert.equal(h.context.testUi.resumeButton.hidden, false);
+  assert.equal(h.state().resumeAvailable, true);
   h.timeline({ revision: 3, time: 101, paused: true, cause: "pause" });
   assert.equal(h.state().pendingAutoResume, false);
   h.player.playError = null;
-  h.run("setupAutoResumeUnlock(); ui.resumeButton.dispatchEvent(new Event('click'))");
+  await h.run("partyAction('resume', {})");
   await h.advance(10);
   assert.equal(h.player.paused, true);
   assert.equal(h.player.muted, false);
