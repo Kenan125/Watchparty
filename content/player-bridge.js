@@ -80,6 +80,7 @@ function setupPlayerBridge() {
     }
     frameCalls.clear();
     framePlayer = null;
+    ui?.root?.classList.remove("wp-player-proxy");
     playerFrameSession = crypto.randomUUID();
     frameCommandId = 0;
     frameSequence = 0;

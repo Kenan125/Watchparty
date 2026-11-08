@@ -1,4 +1,4 @@
-ui = buildUi();
+ui = buildSidePanelHost();
 setupPlayerBridge();
 setupLocalSeekListener(handleLocalPlayerControl);
 setupAutoResumeUnlock();
@@ -36,4 +36,4 @@ window.addEventListener("beforeunload", () => {
   disconnect(false);
 });
 
-addLog("WatchParty loaded. Connect from extension popup.", "system");
+addLog("WatchParty loaded. Open the extension side panel to start a room.", "system");

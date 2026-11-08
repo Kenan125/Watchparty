@@ -1,0 +1,12 @@
+/* Shared Tailwind design tokens. No Preflight or host-page resets. */
+@theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #10141f;
+  --color-surface: #181e2c;
+  --color-line: #30394d;
+  --color-paper: #edf0fa;
+  --color-muted: #a1abc0;
+  --color-periwinkle: #a8b8ff;
+  --color-coral: #ffb59c;
+}
+@custom-variant light (&:where([data-wp-theme="light"], [data-wp-theme="light"] *));

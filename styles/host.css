@@ -1,0 +1,21 @@
+/* Loaded only inside WatchParty shadow roots, never in the service document. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) prefix(wp);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(wp) source(none);
+@import "./foundation.css";
+
+:host { @apply wp:box-border! wp:m-0! wp:border-0! wp:p-0!; }
+:host(.wp-panel-host) { @apply wp:fixed! wp:top-[72px]! wp:right-[16px]! wp:z-[2147483646]! wp:block! wp:h-[min(680px,calc(100dvh-88px))]! wp:w-[min(352px,calc(100vw-24px))]! wp:invisible! wp:pointer-events-none! wp:overflow-hidden! wp:rounded-[18px]!; }
+:host(.wp-panel-host.wp-open) { @apply wp:visible! wp:pointer-events-auto!; }
+:host(.wp-panel-host.wp-player-proxy), :host([hidden]) { @apply wp:hidden!; }
+:host(.wp-panel-host.wp-embedded) { @apply wp:absolute! wp:top-[12px]! wp:bottom-[var(--wp-controls-clearance,96px)]! wp:right-[12px]! wp:h-auto! wp:w-[min(328px,calc(100vw-24px))]!; }
+:host(.wp-panel-host.wp-embedded.wp-player-fixed) { @apply wp:fixed! wp:top-[var(--wp-player-top)]! wp:bottom-[var(--wp-player-bottom)]! wp:right-[var(--wp-player-right)]!; }
+iframe { @apply wp:block wp:h-full wp:w-full wp:border-0 wp:bg-transparent; }
+:host(.wp-launcher-host) { @apply wp:inline-flex! wp:size-[42px]! wp:items-center! wp:justify-center! wp:rounded-[12px]! wp:bg-transparent! wp:text-[#d8e0ff]! wp:cursor-pointer! wp:align-middle!; }
+:host(.wp-launcher-host[hidden]) { @apply wp:hidden!; }
+:host(.wp-launcher-host:focus-visible) { @apply wp:outline-2! wp:outline-offset-2! wp:outline-periwinkle!; }
+:host(.wp-launcher-host:hover), :host(.wp-launcher-active) { @apply wp:bg-[#a8b8ff]/15! wp:text-periwinkle!; }
+:host(.wp-launcher-floating) { @apply wp:fixed! wp:top-[76px]! wp:right-[16px]! wp:z-[2147483647]! wp:bg-ink!; }
+:host(.wp-player-launcher) { @apply wp:absolute! wp:top-[12px]! wp:right-[12px]! wp:z-[2147483645]! wp:bg-ink/90!; }
+:host(.wp-unlock-host) { @apply wp:fixed! wp:top-[20px]! wp:left-[20px]! wp:z-[2147483647]! wp:h-auto! wp:w-auto! wp:bg-periwinkle! wp:px-[14px]! wp:py-[10px]! wp:font-sans! wp:text-[13px]! wp:font-semibold! wp:text-[#131d43]!; }
+.wp-mark { @apply wp:block wp:size-[25px]; }
