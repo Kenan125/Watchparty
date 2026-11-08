@@ -39,6 +39,7 @@ const state = {
   userCount: 0,
   playbackIntentPlaying: false,
   pendingSeekTimer: null,
+  localSeekIntent: null,
 
   pendingAutoResume: false,
   reconnectTimer: null,

@@ -18,6 +18,9 @@
     if (session) window.parent.postMessage({ channel: "watchparty-player", session, sequence: ++sequence,
       videoId, appliedCommandId, ...payload }, parentOrigin);
   }
+  setupLocalSeekListener((action, time) => {
+    if (player) send({ type: "local-control", action, time });
+  });
   function snapshot(event) {
     if (!player) return;
     if (event === "timeupdate") {

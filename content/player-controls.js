@@ -1,3 +1,13 @@
+function setupLocalSeekListener(callback) {
+  document.addEventListener("watchparty-local-seek", (event) => {
+    const notice = event.target;
+    if (!(notice instanceof Element) || notice.tagName !== "WATCHPARTY-LOCAL-SEEK") return;
+    const action = notice.getAttribute("action");
+    const time = Number(notice.getAttribute("time"));
+    if (["play", "pause"].includes(action) || (action === "seek" && Number.isFinite(time) && time >= 0)) callback(action, time);
+  }, true);
+}
+
 function seekCrunchyrollPlayer(player, time) {
   // Embedded players execute this helper in their own document.
   if (typeof player.seekTo === "function") {
