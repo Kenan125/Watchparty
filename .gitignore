@@ -12,6 +12,8 @@ Thumbs.db
 
 dist/
 build/
+test-results/
+playwright-report/
 
 *.tmp
 *.log

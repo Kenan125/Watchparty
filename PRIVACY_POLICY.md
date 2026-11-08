@@ -8,12 +8,9 @@ Crunchyroll WatchParty is a browser extension that synchronizes video controls a
 
 ## Data We Collect
 
-The extension stores the following data locally in the browser using Chrome extension storage:
-
-- Relay server URL
-- Username
-- Room code
-- Optional room password
+The extension stores only the display name (`wpUsername`) in Chrome extension storage.
+Relay URLs, room membership, and playback state are kept in memory while connected.
+The extension does not store or request a Crunchyroll password or authentication token.
 
 The extension does not collect personal identifiers beyond what users voluntarily enter in the username field.
 
@@ -22,11 +19,14 @@ The extension does not collect personal identifiers beyond what users voluntaril
 When connected to a relay server, the extension sends:
 
 - Room events (join/leave)
-- Playback control events (pause/play/seek with timestamp)
+- Playback controls and periodic playback position, paused/buffering state, and speed
 - Chat messages
 - Episode page key used to prevent cross-episode sync
 
 This data is transmitted to the configured relay server so room participants can receive synchronized updates.
+The embedded-player script runs on `static.crunchyroll.com` to access the video.
+It exchanges media state and commands with the Crunchyroll page; only the top page
+connects to the relay. Video/audio content and DRM credentials are not transmitted.
 
 ## Data Sharing
 
@@ -35,7 +35,9 @@ Data is shared only with participants in the same room through the selected rela
 ## Data Retention
 
 - Local settings remain in browser storage until user changes or clears them.
-- Relay server behavior depends on server implementation and hosting logs.
+- The included relay retains room membership and the latest per-episode playback
+  timeline in memory until the room becomes empty; it does not persist chat history.
+  Hosting-provider logs are governed by that provider.
 
 ## Third-Party Services
 
@@ -50,7 +52,7 @@ For public use, users should connect with `wss://` relay URLs.
 Users can:
 
 - Disconnect at any time
-- Change username/room/password at any time
+- Change display name or create/join a different room
 - Remove extension to clear behavior
 - Clear extension storage from browser settings
 
