@@ -1,4 +1,5 @@
 ui = buildUi();
+setupPlayerBridge();
 setupAutoResumeUnlock();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -7,12 +8,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "WP_CONNECT") {
-    connect(message.payload);
+    sendResponse({ ok: connect(message.payload) });
     return;
   }
 
   if (message.type === "WP_DISCONNECT") {
     disconnect(true);
+    sendResponse({ ok: true });
     return;
   }
 
